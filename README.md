@@ -23,7 +23,6 @@ Race_Performance_Predictor/
 │   └── personalized_model.ipynb   # Notebook for the personalized model
 │
 ├── Race_Performance_Predictor.pdf # Full thesis (PDF)
-├── requirements.txt               # Python dependencies
 └── README.md                      # This file
 ```
 
@@ -51,7 +50,6 @@ Race_Performance_Predictor/
 
 ```bash
 Python 3.8+
-pip install -r requirements.txt
 ```
 
 **Main libraries:**
