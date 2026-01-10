@@ -15,7 +15,6 @@ The aim of this project is to develop advanced predictive models for forecasting
 Race_Performance_Predictor/
 │
 ├── data/
-│   ├── marathon_dataset/          # Data for the general model
 │   ├── strava_activities/         # Exports from the Strava platform
 │   └── garmin_activities/         # Exports from Garmin Connect
 │
