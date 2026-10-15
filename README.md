@@ -9,6 +9,31 @@ The aim of this project is to develop advanced predictive models for forecasting
 
 ---
 
+## 🚧 Extension (in progress)
+
+This fork extends the thesis into an installable package and app (see [docs/PLAN_ROZSZERZENIA.md](docs/PLAN_ROZSZERZENIA.md)).
+**Based on:** *Race Performance Predictor* by Zuzanna Jarlaczyńska – the original notebooks, data and thesis PDF are unchanged.
+
+**Stage 1 (done): `src/race_predictor/`** – domain model, Strava/Garmin source adapters (`@register_source`),
+a cleaning pipeline and race-detection strategies ported from `personalized_model.ipynb`, leak-free training windows, tests + CI.
+
+```bash
+python -m venv .venv && source .venv/bin/activate
+pip install -e ".[dev]"
+pytest && ruff check .
+```
+
+```python
+import pandas as pd
+from race_predictor.sources import load_directory
+from race_predictor.processing import default_pipeline
+
+df = pd.concat([load_directory("data/strava_activities"), load_directory("data/garmin_activities")])
+df = default_pipeline().run(df)   # adds hr_max, is_triathlon, is_race
+```
+
+---
+
 ## 📁 Repository Structure
 
 ```text

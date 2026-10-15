@@ -1,0 +1,111 @@
+import pandas as pd
+import pytest
+
+from race_predictor.exceptions import DataValidationError
+from race_predictor.processing import (
+    DropAthletesWithoutHR,
+    EstimateHRMax,
+    HeuristicRaceDetector,
+    MarkTriathlonRuns,
+    Pipeline,
+    RemoveAnomalies,
+    StandardDistanceDetector,
+    ValidateHeartRate,
+    default_pipeline,
+    distance_label,
+    training_windows,
+)
+
+
+def test_remove_anomalies(frame, days):
+    df = frame(
+        [
+            {"date": days(0)},
+            {"date": days(1), "avg_speed_ms": 9.0},
+            {"date": days(2), "distance_m": 500.0},
+            {"date": days(3), "type": "Ride", "avg_speed_ms": 12.0},
+        ]
+    )
+    out = RemoveAnomalies().apply(df)
+    assert len(out) == 2 and set(out["type"]) == {"Run", "Ride"}
+
+
+def test_validate_hr(frame, days):
+    df = frame(
+        [
+            {"date": days(0)},
+            {"date": days(1), "avg_hr": 30.0},
+            {"date": days(2), "avg_hr": float("nan")},
+        ]
+    )
+    assert len(ValidateHeartRate().apply(df)) == 1
+    assert len(ValidateHeartRate(keep_missing=True).apply(df)) == 2
+
+
+def test_drop_athletes_without_hr(frame, days):
+    nan = float("nan")
+    df = frame([{"date": days(0)}, {"date": days(0), "athlete": "b", "avg_hr": nan, "max_hr": nan}])
+    assert set(DropAthletesWithoutHR().apply(df)["athlete"]) == {"a"}
+
+
+def test_estimate_hrmax(frame, days):
+    df = frame([{"date": days(0), "max_hr": 170.0}, {"date": days(1), "max_hr": 185.0}])
+    assert (EstimateHRMax().apply(df)["hr_max"] == 185.0).all()
+
+
+def test_triathlon_marking(frame, days):
+    df = frame(
+        [
+            {"date": days(0), "type": "Ride"},
+            {"date": days(0) + pd.Timedelta(hours=2), "type": "Run"},
+            {"date": days(5), "type": "Run"},
+        ]
+    )
+    out = MarkTriathlonRuns().apply(df)
+    assert out["is_triathlon"].tolist() == [0, 1, 0]
+
+
+def test_distance_label():
+    assert distance_label(42000) == "marathon"
+    assert distance_label(5100) == "5k"
+    assert distance_label(7000) == "other"
+
+
+def test_standard_distance_detector(frame, days):
+    df = frame([{"date": days(0), "distance_m": 10100.0}, {"date": days(1), "distance_m": 7000.0}])
+    assert StandardDistanceDetector().detect(df).tolist() == [True, False]
+
+
+def test_heuristic_detector_flags_hard_standard_distance(frame, days):
+    easy = [
+        {"date": days(i), "distance_m": 7000.0, "avg_hr": 140.0, "avg_speed_ms": 3.0}
+        for i in range(0, 60, 3)
+    ]
+    race = {"date": days(61), "distance_m": 10000.0, "avg_hr": 175.0, "avg_speed_ms": 3.6}
+    df = EstimateHRMax().apply(frame(easy + [race]))
+    flags = HeuristicRaceDetector().detect(df)
+    assert flags.iloc[-1] and not flags.iloc[:-1].any()
+
+
+def test_pipeline_requires_columns():
+    with pytest.raises(DataValidationError):
+        Pipeline([]).run(pd.DataFrame({"athlete": []}))
+
+
+def test_default_pipeline_adds_columns(frame, days):
+    df = frame([{"date": days(i)} for i in range(5)])
+    out = default_pipeline().run(df)
+    assert {"hr_max", "is_triathlon", "is_race"} <= set(out.columns)
+
+
+def test_training_windows_never_leak(frame, days):
+    rows = [{"date": days(i), "is_race": False} for i in range(0, 40, 2)]
+    rows.append({"date": days(41), "is_race": True})
+    rows.append({"date": days(45), "is_race": False})  # after the race -> must be excluded
+    rows.append({"date": days(0) - pd.Timedelta(days=400), "is_race": False})  # outside window
+    windows = list(training_windows(frame(rows), days_window=365))
+    assert len(windows) == 1
+    race, window = windows[0]
+    assert (window["date"] < race["date"]).all()
+    assert (window["date"] >= race["date"] - pd.Timedelta(days=365)).all()
+    assert len(window) == 20
