@@ -54,9 +54,14 @@ class _TabularModel(RaceModel):
         raise NotImplementedError
 
     def _x(self, ds: RaceDataset) -> np.ndarray:
-        return ds.static[ds.tabular_columns].to_numpy(dtype=float)
+        x = ds.static[ds.tabular_columns].to_numpy(dtype=float, copy=True)
+        if hasattr(self, "empty_"):
+            x[:, self.empty_] = 0.0
+        return x
 
     def fit(self, ds: RaceDataset):
+        # Columns that are entirely NaN in the training data break some estimators; zero them.
+        self.empty_ = np.isnan(ds.static[ds.tabular_columns].to_numpy(dtype=float)).all(axis=0)
         self.model_ = self._estimator().fit(self._x(ds), ds.y)
         return self
 
@@ -96,7 +101,21 @@ class HistGradientBoostingBaseline(_TabularModel):
 
     name = "HistGB"
 
-    def _estimator(self):
-        return HistGradientBoostingRegressor(
-            max_iter=200, learning_rate=0.05, max_leaf_nodes=8, min_samples_leaf=5
+    def __init__(
+        self,
+        learning_rate=0.05,
+        max_iter=200,
+        max_leaf_nodes=8,
+        min_samples_leaf=5,
+        l2_regularization=0.0,
+    ):
+        self.params = dict(
+            learning_rate=learning_rate,
+            max_iter=max_iter,
+            max_leaf_nodes=max_leaf_nodes,
+            min_samples_leaf=min_samples_leaf,
+            l2_regularization=l2_regularization,
         )
+
+    def _estimator(self):
+        return HistGradientBoostingRegressor(random_state=0, **self.params)

@@ -14,7 +14,9 @@ from race_predictor.models.base import RaceModel
 PAD_VALUE = 999.0
 
 
-def build_gru_race_model(seq_shape, static_shape, hidden_size=16, dense_units=32, dropout_rate=0.3):
+def build_gru_race_model(
+    seq_shape, static_shape, hidden_size=16, dense_units=32, dropout_rate=0.3, learning_rate=8e-4
+):
     """Architecture as in ``personalized_model.ipynb`` (Bi-GRU x2 + dense static branch)."""
     from tensorflow.keras import Model
     from tensorflow.keras.layers import (
@@ -51,7 +53,7 @@ def build_gru_race_model(seq_shape, static_shape, hidden_size=16, dense_units=32
     out = Dense(1, activation="linear", name="pace_sec_per_km")(merged)
 
     model = Model([seq_input, static_input], out)
-    model.compile(optimizer=Adam(learning_rate=8e-4), loss="mae", metrics=["mae"])
+    model.compile(optimizer=Adam(learning_rate=learning_rate), loss="mae", metrics=["mae"])
     return model
 
 

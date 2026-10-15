@@ -25,6 +25,8 @@ SEQ_FEATURES = [
     "elevation_loss_m",
     "avg_temp_c",
 ]
+# Channels available in both the personal exports and the Kaggle marathon data (used for transfer).
+SHARED_SEQ_FEATURES = ["days_to_race", "distance_m", "moving_s", "avg_speed_ms"]
 STATIC_NUMERIC = [
     "years_of_experience",
     "swim_t_total",
@@ -71,6 +73,10 @@ class RaceDataset:
             self.y[idx],
             self.meta.iloc[idx].reset_index(drop=True),
         )
+
+    def shared_seqs(self) -> list[np.ndarray]:
+        idx = [SEQ_FEATURES.index(f) for f in SHARED_SEQ_FEATURES]
+        return [s[:, idx] for s in self.seqs]
 
     @property
     def tabular_columns(self) -> list[str]:

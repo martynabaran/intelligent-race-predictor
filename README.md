@@ -39,6 +39,15 @@ df = default_pipeline().run(df)  # adds hr_max, is_triathlon, is_race
 python -m race_predictor.evaluation.runner [--with-gru]   # GRU needs `pip install -e ".[deep]"`, ~10 min
 ```
 
+**Stage 3 (code done, Kaggle run pending): transfer learning + Optuna** – `sources/kaggle.py` and `features/kaggle.py`
+(stream the 10.7 M-row Kaggle set into marathon examples), `models/transfer.py` (pretrain a GRU encoder, fine-tune vs. identical
+from-scratch model), `models/tuning.py` (Optuna + nested CV). Tuning results: [docs/RESULTS_TUNING.md](docs/RESULTS_TUNING.md).
+
+```bash
+pip install -e ".[kaggle,deep]" && python scripts/download_kaggle.py --only general
+python experiments/run_transfer.py --kaggle data/kaggle/general
+```
+
 ---
 
 ## 📁 Repository Structure
