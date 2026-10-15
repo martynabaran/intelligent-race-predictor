@@ -48,6 +48,15 @@ pip install -e ".[kaggle,deep]" && python scripts/download_kaggle.py --only gene
 python experiments/run_transfer.py --kaggle data/kaggle/general
 ```
 
+**Stage 5 (done): knowledge distillation + TFLite** – `models/compact.py` (a ~1.2 k-parameter student, 40× smaller than the
+TCN teacher, distilled from soft targets plus a teacher-labelled transfer set of the same training histories asked at other race
+distances), `models/tflite.py` (float32 / dynamic-range / full-int8 export and a `TFLiteRaceModel` evaluated like any other model).
+Accuracy, size and latency: [docs/RESULTS_DISTILLATION.md](docs/RESULTS_DISTILLATION.md).
+
+```bash
+python experiments/run_distillation.py [--teacher tcn] [--seeds 3]   # needs `.[deep]`
+```
+
 ---
 
 ## 📁 Repository Structure
