@@ -111,7 +111,10 @@ def build_model(encoder, seq_shape, static_shape, width=32, dense_units=32, drop
 
 
 class SequenceModel(RaceModel):
-    """Hybrid sequence + static model with a selectable encoder (``gru``/``tcn``/``transformer``)."""
+    """Hybrid sequence + static model.
+
+    The encoder is selectable: ``gru``, ``tcn`` or ``transformer``.
+    """
 
     def __init__(
         self, encoder="tcn", width=32, dense_units=32, dropout=0.3, learning_rate=8e-4,
@@ -119,7 +122,8 @@ class SequenceModel(RaceModel):
     ):
         if encoder not in ENCODERS:
             raise ValueError(f"encoder must be one of {sorted(ENCODERS)}")
-        self.encoder, self.width, self.dense_units, self.dropout = encoder, width, dense_units, dropout
+        self.encoder, self.width = encoder, width
+        self.dense_units, self.dropout = dense_units, dropout
         self.learning_rate, self.epochs, self.patience = learning_rate, epochs, patience
         self.batch_size, self.seed = batch_size, seed
         self.name = {"gru": "GRU", "tcn": "TCN", "transformer": "Transformer"}[encoder]
@@ -155,7 +159,9 @@ class SequenceModel(RaceModel):
         self.model_.fit(
             x, self.y_scaler_.transform(ds.y.reshape(-1, 1)).ravel(), validation_split=0.2,
             epochs=self.epochs, batch_size=self.batch_size, shuffle=True, verbose=0,
-            callbacks=[keras.callbacks.EarlyStopping(patience=self.patience, restore_best_weights=True)],
+            callbacks=[
+                keras.callbacks.EarlyStopping(patience=self.patience, restore_best_weights=True)
+            ],
         )
         return self
 

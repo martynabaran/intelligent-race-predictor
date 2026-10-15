@@ -87,6 +87,7 @@ def test_integrated_gradients_completeness(ds):
 
 
 def test_shap_tabular_shape(ds):
+    pytest.importorskip("shap")
     gb = HistGradientBoostingBaseline().fit(ds)
     values = shap_tabular(gb, ds)
     assert values.shape == (len(ds), len(ds.tabular_columns))

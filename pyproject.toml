@@ -16,6 +16,7 @@ dev = ["pytest>=7", "ruff>=0.5"]
 lightgbm = ["lightgbm>=4"]  # macOS also needs `brew install libomp`
 deep = ["tensorflow>=2.16"]
 kaggle = ["kaggle>=1.6"]
+explain = ["shap>=0.45", "matplotlib>=3.7"]
 
 [tool.setuptools.packages.find]
 where = ["src"]
