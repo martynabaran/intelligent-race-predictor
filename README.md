@@ -29,7 +29,14 @@ from race_predictor.sources import load_directory
 from race_predictor.processing import default_pipeline
 
 df = pd.concat([load_directory("data/strava_activities"), load_directory("data/garmin_activities")])
-df = default_pipeline().run(df)   # adds hr_max, is_triathlon, is_race
+df = default_pipeline().run(df)  # adds hr_max, is_triathlon, is_race
+```
+
+**Stage 2 (done): baselines + GRU + evaluation** – `features/` (one example per race), `models/` (Riegel, Ridge, LightGBM/HistGB, thesis GRU),
+`evaluation/` (thesis chronological split and athlete-grouped CV). Results: [docs/RESULTS_BASELINES.md](docs/RESULTS_BASELINES.md).
+
+```bash
+python -m race_predictor.evaluation.runner [--with-gru]   # GRU needs `pip install -e ".[deep]"`, ~10 min
 ```
 
 ---
