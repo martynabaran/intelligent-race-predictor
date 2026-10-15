@@ -116,8 +116,8 @@ intelligent-race-predictor/
 
 ## 7. Pytania do Zuzi
 
-1. Czy zgadzasz się na rozwijanie projektu w tym kierunku w ramach naszych zajęć?
-2. Jak chcesz być oznaczona – wystarczy sekcja „Based on” w README z linkiem do pracy?
-3. Czy możemy użyć danych Strava/Garmin z `data/` (zanonimizowane) w aplikacji i raportach?
-4. Czy masz linki do zbiorów na Kaggle (zbiór ogólny i spersonalizowany), żebyśmy mogli je pobrać skryptem?
-5. Czy chcesz, żeby zmiany trafiały z powrotem do Twojego repo (pull requesty), czy rozwijamy je w forku?
+1. Czy zgadzasz się na rozwijanie projektu w tym kierunku w ramach naszych zajęć? -tak
+2. Jak chcesz być oznaczona – wystarczy sekcja „Based on” w README z linkiem do pracy? - tak
+3. Czy możemy użyć danych Strava/Garmin z `data/` (zanonimizowane) w aplikacji i raportach? - tak
+4. Czy masz linki do zbiorów na Kaggle (zbiór ogólny i spersonalizowany), żebyśmy mogli je pobrać skryptem? - tak, link: https://www.kaggle.com/datasets/mexwell/long-distance-running-dataset, https://www.kaggle.com/datasets/zuskakluska/activities-garmin, https://www.kaggle.com/datasets/zuskakluska/strava-activities
+5. Czy chcesz, żeby zmiany trafiały z powrotem do Twojego repo (pull requesty), czy rozwijamy je w forku? - rozwijamy na forku
