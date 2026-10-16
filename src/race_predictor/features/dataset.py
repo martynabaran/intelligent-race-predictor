@@ -118,6 +118,53 @@ def _riegel_reference(window: pd.DataFrame) -> tuple[float, float]:
     return float(best["distance_m"]), float(best["distance_m"] / best["avg_speed_ms"])
 
 
+def _example(
+    sub: pd.DataFrame,
+    runs: pd.DataFrame,
+    years_exp: float,
+    race_date: pd.Timestamp,
+    distance_m: float,
+    elevation_gain_m: float,
+    is_triathlon: float,
+    days_window: int,
+    min_runs: int,
+) -> tuple[dict, np.ndarray] | None:
+    """Static features + run sequence for a (real or hypothetical) race on ``race_date``.
+
+    Only runs strictly before ``race_date`` are used. ``None`` if there are too few of them.
+    """
+    start = race_date - pd.Timedelta(days=days_window)
+    window = runs[(runs["date"] >= start) & (runs["date"] < race_date)].copy()
+    if len(window) < min_runs:
+        return None
+    window["days_to_race"] = (race_date - window["date"]).dt.days
+    others = sub[(sub["type"] != "Run") & (sub["date"] >= start) & (sub["date"] <= race_date)]
+    swim, bike, gym = (others[others["type"] == t] for t in ("Swim", "Ride", "Weight Training"))
+    ref_d, ref_t = _riegel_reference(window)
+    static = {
+        "years_of_experience": years_exp,
+        "swim_t_total": _sum(swim, "elapsed_s"),
+        "swim_dist_total": _sum(swim, "distance_m"),
+        "swim_sessions": float(len(swim)),
+        "bike_t_total": _sum(bike, "elapsed_s"),
+        "bike_dist_total": _sum(bike, "distance_m"),
+        "bike_sessions": float(len(bike)),
+        "gym_t_total": _sum(gym, "elapsed_s"),
+        "gym_sessions": float(len(gym)),
+        "race_distance_m": float(distance_m),
+        "race_elevation_gain_m": float(elevation_gain_m),
+        "is_triathlon": float(is_triathlon),
+        **_aggregates(window, race_date, days_window),
+        "riegel_ref_distance_m": ref_d,
+        "riegel_ref_time_s": ref_t,
+    }
+    return static, window[SEQ_FEATURES].to_numpy(dtype=np.float32)
+
+
+def _years_of_experience(runs: pd.DataFrame) -> float:
+    return (runs["date"].max() - runs["date"].min()).days / 365.0 if len(runs) > 1 else 0.0
+
+
 def build_race_dataset(df: pd.DataFrame, days_window: int = 365, min_runs: int = 3) -> RaceDataset:
     """``df`` must come from :func:`race_predictor.processing.default_pipeline`."""
     df = df.sort_values(["athlete", "date"]).reset_index(drop=True)
@@ -125,52 +172,32 @@ def build_race_dataset(df: pd.DataFrame, days_window: int = 365, min_runs: int =
 
     for athlete, sub in df.groupby("athlete"):
         runs = sub[sub["type"] == "Run"]
-        years_exp = (runs["date"].max() - runs["date"].min()).days / 365.0 if len(runs) > 1 else 0.0
+        years_exp = _years_of_experience(runs)
 
         for _, race in runs[runs["is_race"]].iterrows():
-            race_date = race["date"]
-            start = race_date - pd.Timedelta(days=days_window)
-            window = runs[(runs["date"] >= start) & (runs["date"] < race_date)].copy()
-            if len(window) < min_runs:
-                continue
             moving = race["moving_s"] if pd.notna(race["moving_s"]) else race["elapsed_s"]
             if pd.isna(moving) or race["distance_m"] <= 0:
                 continue
-
-            window["days_to_race"] = (race_date - window["date"]).dt.days
-            others = sub[
-                (sub["type"] != "Run") & (sub["date"] >= start) & (sub["date"] <= race_date)
-            ]
-            swim, bike, gym = (
-                others[others["type"] == t] for t in ("Swim", "Ride", "Weight Training")
+            example = _example(
+                sub,
+                runs,
+                years_exp,
+                race["date"],
+                race["distance_m"],
+                race["elevation_gain_m"],
+                race["is_triathlon"],
+                days_window,
+                min_runs,
             )
-            ref_d, ref_t = _riegel_reference(window)
-
-            statics.append(
-                {
-                    "years_of_experience": years_exp,
-                    "swim_t_total": _sum(swim, "elapsed_s"),
-                    "swim_dist_total": _sum(swim, "distance_m"),
-                    "swim_sessions": float(len(swim)),
-                    "bike_t_total": _sum(bike, "elapsed_s"),
-                    "bike_dist_total": _sum(bike, "distance_m"),
-                    "bike_sessions": float(len(bike)),
-                    "gym_t_total": _sum(gym, "elapsed_s"),
-                    "gym_sessions": float(len(gym)),
-                    "race_distance_m": float(race["distance_m"]),
-                    "race_elevation_gain_m": float(race["elevation_gain_m"]),
-                    "is_triathlon": float(race["is_triathlon"]),
-                    **_aggregates(window, race_date, days_window),
-                    "riegel_ref_distance_m": ref_d,
-                    "riegel_ref_time_s": ref_t,
-                }
-            )
-            seqs.append(window[SEQ_FEATURES].to_numpy(dtype=np.float32))
+            if example is None:
+                continue
+            statics.append(example[0])
+            seqs.append(example[1])
             ys.append(float(moving) / (race["distance_m"] / 1000.0))
             metas.append(
                 {
                     "athlete": athlete,
-                    "race_date": race_date,
+                    "race_date": race["date"],
                     "race_distance_m": float(race["distance_m"]),
                 }
             )
@@ -178,3 +205,35 @@ def build_race_dataset(df: pd.DataFrame, days_window: int = 365, min_runs: int =
     return RaceDataset(
         seqs, pd.DataFrame(statics), np.array(ys, dtype=np.float64), pd.DataFrame(metas)
     )
+
+
+def build_query_dataset(
+    df: pd.DataFrame,
+    distances_m: list[float],
+    race_date: pd.Timestamp | None = None,
+    elevation_gain_m: float = 0.0,
+    days_window: int = 365,
+    min_runs: int = 3,
+) -> RaceDataset | None:
+    """Features for *hypothetical* races of one athlete (``df`` = that athlete's activities).
+
+    Default ``race_date`` is the day after the last activity ("a race today"). The target ``y`` is
+    a placeholder (zeros). Returns ``None`` when the history before ``race_date`` is too short.
+    """
+    df = df.sort_values("date")
+    race_date = race_date if race_date is not None else df["date"].max() + pd.Timedelta(days=1)
+    runs = df[df["type"] == "Run"]
+    years_exp = _years_of_experience(runs[runs["date"] < race_date])
+    seqs, statics, metas = [], [], []
+    for d in distances_m:
+        example = _example(
+            df, runs, years_exp, race_date, d, elevation_gain_m, 0.0, days_window, min_runs
+        )
+        if example is None:
+            return None
+        statics.append(example[0])
+        seqs.append(example[1])
+        metas.append(
+            {"athlete": str(df["athlete"].iloc[0]), "race_date": race_date, "race_distance_m": d}
+        )
+    return RaceDataset(seqs, pd.DataFrame(statics), np.zeros(len(seqs)), pd.DataFrame(metas))

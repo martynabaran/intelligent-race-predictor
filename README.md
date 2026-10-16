@@ -9,44 +9,52 @@ The aim of this project is to develop advanced predictive models for forecasting
 
 ---
 
-## 🚧 Extension (in progress)
+## 🚀 Extension: installable package, evaluation and app
 
-This fork extends the thesis into an installable package and app (see [docs/PLAN_ROZSZERZENIA.md](docs/PLAN_ROZSZERZENIA.md)).
-**Based on:** *Race Performance Predictor* by Zuzanna Jarlaczyńska – the original notebooks, data and thesis PDF are unchanged.
+This fork turns the thesis into a package, an evaluation suite and a small web app (plan:
+[docs/PLAN_ROZSZERZENIA.md](docs/PLAN_ROZSZERZENIA.md)).
+**Based on:** *Race Performance Predictor* by Zuzanna Jarlaczyńska – the original notebooks, data and
+thesis PDF are unchanged; logic ported from the notebooks is credited in the module docstrings.
 
-**Stage 1 (done): `src/race_predictor/`** – domain model, Strava/Garmin source adapters (`@register_source`),
-a cleaning pipeline and race-detection strategies ported from `personalized_model.ipynb`, leak-free training windows, tests + CI.
+### Quick start
 
 ```bash
 python -m venv .venv && source .venv/bin/activate
-pip install -e ".[dev]"
+pip install -e ".[dev,app]"          # + ".[deep]" for TensorFlow models, ".[kaggle]" for the download script
+
+race-predictor predict "data/garmin_activities/Activities Jola.csv"   # CLI
+race-predictor app                                                    # web app (Streamlit)
+race-predictor evaluate                                               # baseline comparison
 pytest && ruff check .
 ```
 
-```python
-import pandas as pd
-from race_predictor.sources import load_directory
-from race_predictor.processing import default_pipeline
+The app takes a Strava `activities.csv` or Garmin Connect CSV export and shows predicted 5 km / 10 km /
+half / marathon times with an 80 % range, a comparison with the Riegel formula, a form-over-time curve and
+the features driving the prediction. Ranges are empirical errors on athletes the model had not seen
+(roughly ±15 %); the model is trained on only 170 races of 14 athletes, so treat predictions as indicative.
 
-df = pd.concat([load_directory("data/strava_activities"), load_directory("data/garmin_activities")])
-df = default_pipeline().run(df)  # adds hr_max, is_triathlon, is_race
-```
+### What was built
 
-**Stage 2 (done): baselines + GRU + evaluation** – `features/` (one example per race), `models/` (Riegel, Ridge, LightGBM/HistGB, thesis GRU),
-`evaluation/` (thesis chronological split and athlete-grouped CV). Results: [docs/RESULTS_BASELINES.md](docs/RESULTS_BASELINES.md).
+| Stage | Where | Result |
+|---|---|---|
+| 1. Package | `sources/`, `processing/`, `domain/` | Strava/Garmin adapters (`@register_source`), cleaning pipeline, race detection, leak-free windows; tests + CI |
+| 2. Baselines | `features/`, `models/`, `evaluation/` | Riegel, Ridge, boosting, thesis GRU; chronological and athlete-grouped evaluation → [results](docs/RESULTS_BASELINES.md) |
+| 3. Transfer + tuning | `sources/kaggle.py`, `models/transfer.py`, `models/tuning.py` | Kaggle pretraining code (**real run pending the data download**), Optuna with nested CV → [tuning](docs/RESULTS_TUNING.md) |
+| 4. Architectures + XAI | `models/sequence.py`, `evaluation/explain.py` | GRU vs TCN vs Transformer, SHAP and integrated gradients → [architectures](docs/RESULTS_ARCHITECTURES.md), [explainability](docs/RESULTS_EXPLAINABILITY.md) |
+| 5. Embedded | `models/distill.py`, `models/tflite.py` | Distilled 4 KB int8 TFLite model, ~130× smaller than the GRU at equal accuracy → [results](docs/RESULTS_EMBEDDED.md) |
+| 6. App | `predictor.py`, `cli.py`, `app/` | CLI + Streamlit app |
 
-```bash
-python -m race_predictor.evaluation.runner [--with-gru]   # GRU needs `pip install -e ".[deep]"`, ~10 min
-```
+### Headline findings (MAPE of race time on **unseen athletes**, 170 races)
 
-**Stage 3 (code done, Kaggle run pending): transfer learning + Optuna** – `sources/kaggle.py` and `features/kaggle.py`
-(stream the 10.7 M-row Kaggle set into marathon examples), `models/transfer.py` (pretrain a GRU encoder, fine-tune vs. identical
-from-scratch model), `models/tuning.py` (Optuna + nested CV). Tuning results: [docs/RESULTS_TUNING.md](docs/RESULTS_TUNING.md).
+| Model | MAPE |
+|---|---|
+| Ridge regression (used by the app) | 9.7 % |
+| Riegel formula | 11.0 % |
+| GRU / TCN / Transformer (3 seeds) | 15.0 % / 17.0 % / 17.7 % |
+| Distilled MLP, int8 TFLite (3.7 KB) | 12.9 % |
 
-```bash
-pip install -e ".[kaggle,deep]" && python scripts/download_kaggle.py --only general
-python experiments/run_transfer.py --kaggle data/kaggle/general
-```
+With this little data the simple models win; the sequence models need the pretraining of stage 3 to pay off.
+Methodological notes (grouped CV by athlete, nested tuning, seed variance) are in the results files.
 
 ---
 

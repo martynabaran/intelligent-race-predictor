@@ -111,15 +111,28 @@ def build_model(encoder, seq_shape, static_shape, width=32, dense_units=32, drop
 
 
 class SequenceModel(RaceModel):
-    """Hybrid sequence + static model with a selectable encoder (``gru``/``tcn``/``transformer``)."""
+    """Hybrid sequence + static model; encoder is ``gru``, ``tcn`` or ``transformer``."""
 
     def __init__(
-        self, encoder="tcn", width=32, dense_units=32, dropout=0.3, learning_rate=8e-4,
-        epochs=200, patience=20, batch_size=16, seed=0,
+        self,
+        encoder="tcn",
+        width=32,
+        dense_units=32,
+        dropout=0.3,
+        learning_rate=8e-4,
+        epochs=200,
+        patience=20,
+        batch_size=16,
+        seed=0,
     ):
         if encoder not in ENCODERS:
             raise ValueError(f"encoder must be one of {sorted(ENCODERS)}")
-        self.encoder, self.width, self.dense_units, self.dropout = encoder, width, dense_units, dropout
+        self.encoder, self.width, self.dense_units, self.dropout = (
+            encoder,
+            width,
+            dense_units,
+            dropout,
+        )
         self.learning_rate, self.epochs, self.patience = learning_rate, epochs, patience
         self.batch_size, self.seed = batch_size, seed
         self.name = {"gru": "GRU", "tcn": "TCN", "transformer": "Transformer"}[encoder]
@@ -129,7 +142,11 @@ class SequenceModel(RaceModel):
 
         scaled = [self.seq_scaler_.transform(np.nan_to_num(s)) for s in ds.seqs]
         seq = pad_sequences(
-            scaled, maxlen=self.max_len_, padding="post", truncating="pre", value=PAD_VALUE,
+            scaled,
+            maxlen=self.max_len_,
+            padding="post",
+            truncating="pre",
+            value=PAD_VALUE,
             dtype="float32",
         )
         num = np.nan_to_num(ds.static[STATIC_NUMERIC].to_numpy(float))
@@ -149,16 +166,30 @@ class SequenceModel(RaceModel):
 
         x = self.inputs(ds)
         self.model_ = build_model(
-            self.encoder, (self.max_len_, len(SEQ_FEATURES)), (x[1].shape[1],), self.width,
-            self.dense_units, self.dropout, self.learning_rate,
+            self.encoder,
+            (self.max_len_, len(SEQ_FEATURES)),
+            (x[1].shape[1],),
+            self.width,
+            self.dense_units,
+            self.dropout,
+            self.learning_rate,
         )
         self.model_.fit(
-            x, self.y_scaler_.transform(ds.y.reshape(-1, 1)).ravel(), validation_split=0.2,
-            epochs=self.epochs, batch_size=self.batch_size, shuffle=True, verbose=0,
-            callbacks=[keras.callbacks.EarlyStopping(patience=self.patience, restore_best_weights=True)],
+            x,
+            self.y_scaler_.transform(ds.y.reshape(-1, 1)).ravel(),
+            validation_split=0.2,
+            epochs=self.epochs,
+            batch_size=self.batch_size,
+            shuffle=True,
+            verbose=0,
+            callbacks=[
+                keras.callbacks.EarlyStopping(patience=self.patience, restore_best_weights=True)
+            ],
         )
         return self
 
+    def to_pace(self, scaled: np.ndarray) -> np.ndarray:
+        return self.y_scaler_.inverse_transform(np.asarray(scaled).reshape(-1, 1)).ravel()
+
     def predict(self, ds: RaceDataset) -> np.ndarray:
-        pred = self.model_.predict(self.inputs(ds), verbose=0)
-        return self.y_scaler_.inverse_transform(pred).ravel()
+        return self.to_pace(self.model_.predict(self.inputs(ds), verbose=0))

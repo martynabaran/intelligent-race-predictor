@@ -4,6 +4,7 @@ from race_predictor.features.dataset import (
     STATIC_BINARY,
     STATIC_NUMERIC,
     RaceDataset,
+    build_query_dataset,
     build_race_dataset,
 )
 from race_predictor.features.kaggle import PretrainData, build_marathon_data
@@ -16,5 +17,6 @@ __all__ = [
     "PretrainData",
     "RaceDataset",
     "build_marathon_data",
+    "build_query_dataset",
     "build_race_dataset",
 ]

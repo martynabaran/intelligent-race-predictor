@@ -33,7 +33,7 @@ def activities_to_frame(activities: list[Activity]) -> pd.DataFrame:
     if df.empty:
         return pd.DataFrame(columns=COLUMNS)
     df = df.rename(columns={"athlete_id": "athlete"})
-    df["type"] = df["type"].map(lambda t: t.value).astype(object)
+    df["type"] = df["type"].map(lambda t: getattr(t, "value", t)).astype(object)
     df["date"] = pd.to_datetime(df["date"])
     return df[COLUMNS]
 
