@@ -15,7 +15,7 @@ from race_predictor.evaluation.embedded import (
     teacher_scores,
 )
 from race_predictor.evaluation.runner import load_dataset
-from race_predictor.models.distill import TabularMLP
+from race_predictor.models.distill import CompactSequence, TabularMLP
 from race_predictor.models.sequence import SequenceModel
 
 
@@ -30,10 +30,12 @@ def main() -> None:
     teacher = lambda: SequenceModel("gru", seed=0)  # noqa: E731
     students = [
         StudentSpec("MLP(16,8) tabular", lambda: TabularMLP(), ("float", "int8")),
-        # int8 conversion of the TCN succeeds but the interpreter aborts at runtime -> float only
+        # The int8 interpreter aborts on this one (-1e9 masked max) and PAD_VALUE=999 in the input
+        # would swamp the int8 range anyway -> float only; CompactSequence fixes both.
         StudentSpec(
             "TCN-small (w=8)", lambda: SequenceModel("tcn", width=8, dense_units=16), ("float",)
         ),
+        StudentSpec("CompactSequence (w=8)", lambda: CompactSequence(), ("float", "int8")),
     ]
     acc = pd.concat(
         [teacher_scores(ds, teacher), evaluate_embedded(ds, teacher, students, args.alpha)]

@@ -8,8 +8,13 @@ pytest.importorskip("tensorflow")
 
 from race_predictor.evaluation.embedded import StudentSpec, evaluate_embedded  # noqa: E402
 from race_predictor.models.base import RaceModel  # noqa: E402
-from race_predictor.models.distill import Distilled, TabularMLP  # noqa: E402
-from race_predictor.models.tflite import TFLiteModel, convert_to_tflite  # noqa: E402
+from race_predictor.models.distill import CompactSequence, Distilled, TabularMLP  # noqa: E402
+from race_predictor.models.sequence import SequenceModel  # noqa: E402
+from race_predictor.models.tflite import (  # noqa: E402
+    TFLiteModel,
+    convert_to_tflite,
+    unroll_rnns,
+)
 
 
 @pytest.fixture
@@ -101,3 +106,36 @@ def test_evaluate_embedded_table(ds):
     assert set(table["format"]) == {"keras", "tflite-float", "tflite-int8"}
     assert set(table["training"]) == {"plain", "distilled a=0.5"}
     assert set(table["protocol"]) == {"chronological", "grouped-CV"}
+
+
+@pytest.mark.parametrize("mode", ["float", "int8"])
+def test_compact_sequence_tflite_matches_keras(ds, mode):
+    student = CompactSequence(epochs=3).fit(ds)
+    x = student.inputs(ds)
+    assert [a.shape[0] for a in x] == [len(ds)] * 3 and (x[0][x[1] == 0] == 0).all()
+    tfl = TFLiteModel(convert_to_tflite(student.model_, mode, x))
+    ref = student.model_.predict(x, verbose=0).ravel()
+    tol = 1e-4 if mode == "float" else 0.2  # standardised-target units
+    assert np.abs(tfl.predict(x) - ref).max() < tol
+
+
+def test_compact_sequence_padding_invariant(ds):
+    student = CompactSequence(epochs=2).fit(ds)
+    assert student.predict(ds.subset([0])) == pytest.approx(student.predict(ds)[:1], abs=1e-3)
+
+
+def test_gru_teacher_converts_to_builtin_ops(ds):
+    """Unrolled GRU runs on the stock interpreter (no Flex delegate), also as int8."""
+    teacher = SequenceModel("gru", epochs=1, width=4).fit(ds)
+    x = teacher.inputs(ds)
+    unrolled = unroll_rnns(teacher.model_)
+    full = (x[0][:, :, 0] != 999.0).all(axis=1)  # unpadded rows: unrolling is exact there
+    ref = teacher.model_.predict(x, verbose=0).ravel()
+    assert unrolled.predict(x, verbose=0).ravel()[full] == pytest.approx(ref[full], abs=1e-5)
+    for mode in ("float", "int8"):
+        assert np.isfinite(TFLiteModel(convert_to_tflite(teacher.model_, mode, x)).predict(x)).all()
+
+
+def test_unroll_rnns_is_noop_without_rnn(ds):
+    mlp = TabularMLP(epochs=1).fit(ds)
+    assert unroll_rnns(mlp.model_) is mlp.model_

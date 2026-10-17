@@ -7,6 +7,37 @@ from collections.abc import Sequence
 
 import numpy as np
 
+INPUT_NAMES = ("seq_input", "mask_input", "static_input")
+
+
+def unroll_rnns(model):
+    """Copy of ``model`` with every RNN layer unrolled (same weights).
+
+    A rolled GRU/LSTM converts to a TensorList while-loop that needs Select TF ops (the Flex
+    delegate), which the stock TFLite interpreter - and a microcontroller - cannot run. Unrolled
+    over the fixed sequence length it lowers to builtin ops, so it also quantises to int8.
+    Models without RNN layers are returned unchanged.
+    """
+    import keras
+
+    rnns = [layer for layer in model._flatten_layers() if isinstance(layer, keras.layers.RNN)]
+    if not rnns:
+        return model
+
+    def clone(layer):
+        cfg = layer.get_config()
+        if isinstance(layer, keras.layers.Bidirectional):
+            cfg["layer"]["config"]["unroll"] = True
+            if cfg.get("backward_layer"):
+                cfg["backward_layer"]["config"]["unroll"] = True
+        elif isinstance(layer, keras.layers.RNN):
+            cfg["unroll"] = True
+        return layer.__class__.from_config(cfg)
+
+    unrolled = keras.models.clone_model(model, clone_function=clone)
+    unrolled.set_weights(model.get_weights())
+    return unrolled
+
 
 def convert_to_tflite(
     model,
@@ -20,10 +51,13 @@ def convert_to_tflite(
 
     ``representative``: list of input arrays (one per model input, first axis = samples), needed
     for ``int8`` calibration.
+
+    RNN layers are unrolled first (:func:`unroll_rnns`), so ``select_tf_ops`` is only needed for
+    other unsupported ops.
     """
     import tensorflow as tf
 
-    converter = tf.lite.TFLiteConverter.from_keras_model(model)
+    converter = tf.lite.TFLiteConverter.from_keras_model(unroll_rnns(model))
     if select_tf_ops:
         converter.target_spec.supported_ops = [
             tf.lite.OpsSet.TFLITE_BUILTINS,
@@ -68,10 +102,8 @@ class TFLiteModel:
         if len(self._in) == 1:
             return [0]
         names = [d["name"] for d in self._in]
-        order = []
-        for key in ("seq_input", "static_input"):
-            order.append(next(i for i, n in enumerate(names) if key in n))
-        return order
+        keys = [k for k in INPUT_NAMES if any(k in n for n in names)]
+        return [next(i for i, n in enumerate(names) if key in n) for key in keys]
 
     def _run_one(self, sample: Sequence[np.ndarray], order: list[int]) -> float:
         for arr, idx in zip(sample, order, strict=True):
