@@ -1,6 +1,6 @@
 # Plan rozszerzenia projektu – propozycja do akceptacji
 
-> **Status:** propozycja – czeka na zgodę autorki oryginalnego projektu (Zuzi).
+> **Status:** etapy 1–7 zaakceptowane (1–6 zrobione), rozszerzenie z sekcji 8 – propozycja do ustalenia z Zuzią.
 > **Autorka propozycji:** Martyna Baran
 > **Cel:** wspólny projekt zaliczeniowy na dwa przedmioty (AGH, AI & Data Analysis, sem. 2):
 > **Advanced Python Programming** (dr K. Kluza) oraz **Advanced Machine Learning** (dr T. Kryjak).
@@ -112,6 +112,9 @@ intelligent-race-predictor/
 | 6 | Aplikacja Streamlit + CLI, CI, README | działające demo |
 | 7 | Raport i prezentacje na oba przedmioty | slajdy + dokumentacja |
 
+**Stan na 17.10.2026:** etapy 1–6 są zrobione (Zuzia); transfer learning z etapu 3 czeka na uruchomienie na pełnym
+zbiorze z Kaggle. Raport i prezentacje (etap 7) przechodzą na koniec harmonogramu z sekcji 8.
+
 ---
 
 ## 7. Pytania do Zuzi
@@ -121,3 +124,68 @@ intelligent-race-predictor/
 3. Czy możemy użyć danych Strava/Garmin z `data/` (zanonimizowane) w aplikacji i raportach? - tak
 4. Czy masz linki do zbiorów na Kaggle (zbiór ogólny i spersonalizowany), żebyśmy mogli je pobrać skryptem? - tak, link: https://www.kaggle.com/datasets/mexwell/long-distance-running-dataset, https://www.kaggle.com/datasets/zuskakluska/activities-garmin, https://www.kaggle.com/datasets/zuskakluska/strava-activities
 5. Czy chcesz, żeby zmiany trafiały z powrotem do Twojego repo (pull requesty), czy rozwijamy je w forku? - rozwijamy na forku
+
+---
+
+## 8. Rozszerzenie: od predykcji do pomocy w przygotowaniu do startu
+
+Mamy jeszcze ok. 4 miesiące (do połowy lutego 2027), więc proponujemy rozwinąć aplikację z „kalkulatora czasu”
+w asystenta przygotowań do startu: **ile pobiegnę → czy mój cel jest realny → jak trenować do dnia startu**.
+
+### 8.1. Co wynika z dotychczasowych wyników
+
+Szczegóły: `docs/RESULTS_BREAKDOWN.md` (PR z analizą błędów).
+
+- **Biegi w triathlonie to ¼ startów i główne źródło błędu.** Na zwykłych startach wzór Riegela myli się o 6,6 %
+  (mediana 4,6 %), na biegach w triathlonie o 23 %. Typy startów trzeba rozdzielić.
+- **Dla zwykłych startów nowych zawodników najlepszy jest Riegel**, poza maratonem (13 %). Modele uczone pomagają, gdy
+  znają historię danego zawodnika i przy triathlonie.
+- **Dane tętna wymagają czyszczenia.** Skoki czujnika zawyżały HRmax do 220–253 u 6 osób, a od HRmax zależy
+  wykrywanie startów i każda analiza obciążenia.
+- **Modele sekwencyjne przegrywają z prostymi przy 170 startach.** Szansą jest pretrening na Kaggle (etap 3).
+
+### 8.2. Nowe etapy
+
+| # | Etap | Zakres | Rezultat |
+|---|---|---|---|
+| 8 | Jakość danych | sprawdzenie startów dodanych po filtrze skoków tętna (+33), przegląd 50 „startów” o niestandardowym dystansie, poprawka HRmax jako domyślna | czystsze etykiety i HRmax, ponowne wyniki bazowe |
+| 9 | Obciążenie treningowe | TRIMP z tętna i czasu; fitness / zmęczenie / forma (CTL / ATL / TSB); indywidualnie dopasowany model Banistera (impulse–response) | moduł `training_load/`, nowe cechy modeli (np. świeżość w dniu startu), wykres w aplikacji |
+| 10 | Tryby startów | bieg uliczny / triathlon / korekta na przewyższenie (trail); model dobierany do trybu | lepsza dokładność dla każdego typu, wybór trybu w aplikacji |
+| 11 | Niepewność | conformal prediction z podziałem po zawodnikach; sprawdzenie pokrycia przedziałów | „10 km: 44–47 min (80 %)” z gwarancją pokrycia zamiast przedziałów empirycznych |
+| 12 | Planer celu | czy cel jest realny na daną datę; plan tygodni do startu oparty na zasadach (fazy, progresja ≤ 10 % / tydz., taper), tempa stref z przewidywanego czasu; plan tempa na dzień startu; eksport do kalendarza (`.ics`) | nowa zakładka aplikacji |
+| 13 | Symulacje „co jeśli” | wpływ zmian treningu (kilometraż, długie wybiegania) na przewidywany czas – na modelu ML i modelu Banistera; jasne zastrzeżenie, że to korelacja, nie zalecenie | interaktywne scenariusze w aplikacji |
+| 14 | Transfer learning – uruchomienie | pobranie zbioru Kaggle, pretrening, porównanie z Riegelem na zwykłych startach | odpowiedź, czy pretrening ratuje modele sekwencyjne |
+| 15 | Raport i prezentacje | dawny etap 7 | slajdy, raport, demo |
+
+Świadomie **nie** robimy uczenia ze wzmocnieniem do planowania treningów (brak danych, by je uczyć) ani analizy
+tętna sekunda po sekundzie (eksporty mają tylko podsumowania treningów).
+
+### 8.3. Jak to pokrywa przedmioty
+
+| Etap | Advanced Python | Advanced ML |
+|---|---|---|
+| 8 | testy regresyjne potoku danych, walidacja | jakość etykiet, wpływ na ewaluację |
+| 9 | moduł obliczeń na szeregach czasowych (pandas, generatory) | inżynieria cech, dopasowanie modelu fizjologicznego (optymalizacja parametrów) |
+| 10 | wzorzec Strategy (model per tryb) | dobór modelu do podproblemu |
+| 11 | – | conformal prediction, kalibracja niepewności |
+| 12 | Builder / dataclasses / generatory tygodni planu, eksport `.ics`, testy reguł | – |
+| 13 | interaktywny interfejs | wyjaśnienia kontrfaktyczne, analiza wrażliwości |
+| 14 | strumieniowe przetwarzanie 10,7 mln wierszy | transfer learning |
+
+### 8.4. Harmonogram (orientacyjny)
+
+| Okres | Etapy |
+|---|---|
+| do połowy listopada | 8, 9; start 14 (pobranie danych i długie obliczenia w tle) |
+| do połowy grudnia | 10, 11, wyniki 14 |
+| do połowy stycznia | 12, 13 |
+| do połowy lutego | 15 + zapas na poprawki |
+
+### 8.5. Do ustalenia z Zuzią
+
+1. **Podział etapów.** Propozycja Martyny: Martyna 8, 9, 12; Zuzia 10, 11, 14; 13 i 15 wspólnie. Etapy 12–13 zmieniają
+   aplikację Zuzi, więc interfejs `predictor.py` ustalamy razem.
+2. **Sposób pracy.** Osobny branch i pull request na etap (zamiast pushowania na `main`), żebyśmy nie robiły tego samego
+   równolegle. Etap 5 zrobiłyśmy obie naraz.
+3. **Domyślny model w aplikacji.** Riegel dla zwykłych startów (z korektą na maraton), czy zostajemy przy Ridge?
+4. **Filtr skoków tętna.** Czy sprawdzasz 33 nowe starty (czy to prawdziwe zawody), zanim włączymy go domyślnie?
