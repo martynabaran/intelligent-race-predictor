@@ -9,8 +9,10 @@ from race_predictor.processing import (
     MarkTriathlonRuns,
     Pipeline,
     RemoveAnomalies,
+    RemoveImplausiblyFastRuns,
     StandardDistanceDetector,
     ValidateHeartRate,
+    ValidateMaxHeartRate,
     default_pipeline,
     distance_label,
     training_windows,
@@ -40,6 +42,39 @@ def test_validate_hr(frame, days):
     )
     assert len(ValidateHeartRate().apply(df)) == 1
     assert len(ValidateHeartRate(keep_missing=True).apply(df)) == 2
+
+
+def test_remove_implausibly_fast_runs_is_per_athlete(frame, days):
+    df = frame(
+        [
+            *({"date": days(i), "avg_speed_ms": 3.0} for i in range(5)),
+            {"date": days(5), "avg_speed_ms": 6.3},  # 2.1x this athlete's median: a ride
+            {"date": days(6), "avg_speed_ms": 4.8},  # 1.6x: a fast but possible run
+            {"date": days(7), "avg_speed_ms": 7.0, "type": "Ride"},  # rides are not touched
+            *({"date": days(i), "athlete": "b", "avg_speed_ms": 4.5} for i in range(3)),
+        ]
+    )
+    out = RemoveImplausiblyFastRuns().apply(df)
+    assert len(out) == len(df) - 1 and 6.3 not in out["avg_speed_ms"].to_list()
+    assert (out["athlete"] == "b").sum() == 3  # 4.5 m/s is normal for athlete b
+
+
+def test_validate_max_hr_blanks_spikes_before_hrmax(frame, days):
+    df = frame([{"date": days(0), "max_hr": 185.0}, {"date": days(1), "max_hr": 244.0}])
+    out = EstimateHRMax().apply(ValidateMaxHeartRate().apply(df))
+    assert len(out) == 2 and out["max_hr"].isna().sum() == 1
+    assert (out["hr_max"] == 185.0).all()
+
+
+def test_default_pipeline_switches():
+    def names(p):
+        return [type(s).__name__ for s in p.steps]
+
+    assert "RemoveImplausiblyFastRuns" in names(default_pipeline())
+    assert "ValidateMaxHeartRate" not in names(default_pipeline())
+    assert "ValidateMaxHeartRate" in names(default_pipeline(hr_spike_filter=True))
+    thesis = names(default_pipeline(fast_run_filter=False))
+    assert "RemoveImplausiblyFastRuns" not in thesis and len(thesis) == 6
 
 
 def test_drop_athletes_without_hr(frame, days):

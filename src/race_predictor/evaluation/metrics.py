@@ -1,4 +1,8 @@
-"""Regression metrics. NRMSE is RMSE divided by the range of the true values."""
+"""Regression metrics. NRMSE is RMSE divided by the range of the true values.
+
+MAPE is reported next to the median APE: a few badly predicted races (e.g. triathlon runs) pull
+the mean far above the typical error.
+"""
 
 from __future__ import annotations
 
@@ -15,4 +19,5 @@ def evaluate(y_true, y_pred) -> dict[str, float]:
         "rmse": rmse,
         "nrmse_pct": 100 * rmse / span,
         "mape_pct": float(100 * np.mean(np.abs(err) / y_true)),
+        "median_ape_pct": float(100 * np.median(np.abs(err) / y_true)),
     }

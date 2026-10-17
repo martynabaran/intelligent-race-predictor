@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import argparse
-from collections.abc import Callable
+from collections.abc import Callable, Iterator
 from pathlib import Path
 
 import numpy as np
@@ -19,7 +19,7 @@ from race_predictor.models import (
     RiegelBaseline,
 )
 from race_predictor.models.base import RaceModel
-from race_predictor.processing import default_pipeline
+from race_predictor.processing import Pipeline, default_pipeline
 from race_predictor.sources import load_directory
 from race_predictor.utils import timer
 
@@ -35,6 +35,7 @@ def _score(ds: RaceDataset, pred: np.ndarray, index: np.ndarray) -> dict[str, fl
         "MAE_time_min": time["mae"] / 60,
         "RMSE_time_min": time["rmse"] / 60,
         "MAPE_%": time["mape_pct"],
+        "MedAPE_%": time["median_ape_pct"],
         "MAE_pace_s_km": pace["mae"],
     }
 
@@ -47,21 +48,26 @@ def compare_models(
     rows = []
     for name, make in factories.items():
         with timer(name) as t:
-            train, test = chronological_split(ds)
-            pred = make().fit(ds.subset(train)).predict(ds.subset(test))
-            rows.append({"model": name, "protocol": "chronological", **_score(ds, pred, test)})
-
-            oof, order = [], []
-            for tr, te in grouped_splits(ds, n_splits):
-                oof.append(make().fit(ds.subset(tr)).predict(ds.subset(te)))
-                order.append(te)
-            order = np.concatenate(order)
-            rows.append(
-                {"model": name, "protocol": "grouped-CV", **_score(ds, np.concatenate(oof), order)}
-            )
+            for protocol, pred, index in protocol_predictions(ds, make, n_splits):
+                rows.append({"model": name, "protocol": protocol, **_score(ds, pred, index)})
         for r in rows[-2:]:
             r["fit_s"] = t.seconds
     return pd.DataFrame(rows)
+
+
+def protocol_predictions(
+    ds: RaceDataset, make: ModelFactory, n_splits: int = 5
+) -> Iterator[tuple[str, np.ndarray, np.ndarray]]:
+    """Yield ``(protocol, predictions, test_index)`` for both evaluation protocols. Grouped CV
+    yields the pooled out-of-fold predictions."""
+    train, test = chronological_split(ds)
+    yield "chronological", make().fit(ds.subset(train)).predict(ds.subset(test)), test
+
+    oof, order = [], []
+    for tr, te in grouped_splits(ds, n_splits):
+        oof.append(make().fit(ds.subset(tr)).predict(ds.subset(te)))
+        order.append(te)
+    yield "grouped-CV", np.concatenate(oof), np.concatenate(order)
 
 
 def default_factories(with_gru: bool = False) -> dict[str, ModelFactory]:
@@ -83,12 +89,14 @@ def default_factories(with_gru: bool = False) -> dict[str, ModelFactory]:
     return factories
 
 
-def load_dataset(data_dir: Path) -> RaceDataset:
+def load_dataset(data_dir: Path, pipeline: Pipeline | None = None) -> RaceDataset:
+    """Races from the Strava + Garmin exports; ``pipeline`` defaults to ``default_pipeline()``."""
     frames = [
         load_directory(data_dir / "strava_activities"),
         load_directory(data_dir / "garmin_activities"),
     ]
-    return build_race_dataset(default_pipeline().run(pd.concat(frames, ignore_index=True)))
+    pipeline = pipeline or default_pipeline()
+    return build_race_dataset(pipeline.run(pd.concat(frames, ignore_index=True)))
 
 
 def main() -> None:
