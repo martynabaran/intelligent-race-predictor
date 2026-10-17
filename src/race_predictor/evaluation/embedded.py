@@ -127,13 +127,13 @@ def measure_deployment(
     x = teacher.inputs(ds)
     t0 = _time_keras(teacher.model_, x)
     rows[-1]["latency_us"] = t0
-    for mode, select in (("float", True),):
+    for mode in ("float", "int8"):
         try:
-            blob = convert_to_tflite(teacher.model_, mode, x, select_tf_ops=select)
+            blob = convert_to_tflite(teacher.model_, mode, x)
             rows.append(
                 {
                     "model": "teacher",
-                    "format": f"tflite-{mode} (select TF ops)",
+                    "format": f"tflite-{mode}",
                     "size_kb": len(blob) / 1024,
                     "latency_us": TFLiteModel(blob).latency_us(x, repeats=30),
                 }
