@@ -146,6 +146,9 @@ Szczegóły: `docs/RESULTS_BREAKDOWN.md` (PR z analizą błędów).
 
 ### 8.2. Nowe etapy
 
+Szczegółowa architektura (co powstaje, z czego korzysta, co zmienia, kolejność i zasady pracy):
+[ARCHITEKTURA_ROZSZERZENIA.md](ARCHITEKTURA_ROZSZERZENIA.md).
+
 | # | Etap | Zakres | Rezultat |
 |---|---|---|---|
 | 8 | Jakość danych | sprawdzenie startów dodanych po filtrze skoków tętna (+33), przegląd 50 „startów” o niestandardowym dystansie, poprawka HRmax jako domyślna | czystsze etykiety i HRmax, ponowne wyniki bazowe |
@@ -183,8 +186,8 @@ tętna sekunda po sekundzie (eksporty mają tylko podsumowania treningów).
 
 ### 8.5. Do ustalenia z Zuzią
 
-1. **Podział etapów.** Propozycja Martyny: Martyna 8, 9, 12; Zuzia 10, 11, 14; 13 i 15 wspólnie. Etapy 12–13 zmieniają
-   aplikację Zuzi, więc interfejs `predictor.py` ustalamy razem.
+1. **Podział etapów.** Martyna może wziąć wszystkie etapy 8–15. Czy chcesz któryś zrobić sama albo tylko robić review?
+   Etapy 8 i 12–13 przebudowują `predictor.py` i aplikację (patrz architektura), więc daj znać, jeśli coś tam zmieniasz.
 2. **Sposób pracy.** Osobny branch i pull request na etap (zamiast pushowania na `main`), żebyśmy nie robiły tego samego
    równolegle. Etap 5 zrobiłyśmy obie naraz.
 3. **Domyślny model w aplikacji.** Riegel dla zwykłych startów (z korektą na maraton), czy zostajemy przy Ridge?
