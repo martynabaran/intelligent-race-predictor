@@ -6,7 +6,8 @@ one of them and the model saw differently cleaned data in the app than in traini
 from :func:`cleaning_pipeline`: the shared steps are identical, and only what has to differ does.
 
 * ``train``: drop athletes without heart rate, then add ``hr_max``, ``is_triathlon``, ``is_race``
-  (race detection needs heart rate).
+  (race detection needs heart rate). Runs after a ride are not races (``DropTriathlonRaces``)
+  unless ``include_triathlon_races`` - only the error analysis needs them.
 * ``predict``: keep rows without heart rate (users may not wear a strap) and impute gaps.
 """
 
@@ -16,6 +17,7 @@ from typing import Literal
 
 from race_predictor.processing.pipeline import (
     DropAthletesWithoutHR,
+    DropTriathlonRaces,
     EstimateHRMax,
     ImputeMissing,
     MarkTriathlonRuns,
@@ -45,6 +47,7 @@ def cleaning_pipeline(
     detector=None,
     fast_run_filter: bool = True,
     hr_spike_filter: bool = False,
+    include_triathlon_races: bool = False,
 ) -> Pipeline:
     """Cleaning chain for ``purpose``.
 
@@ -67,13 +70,19 @@ def cleaning_pipeline(
             EstimateHRMax(),
             MarkTriathlonRuns(),
             DetectRaces(detector),
+            *([] if include_triathlon_races else [DropTriathlonRaces()]),
         ]
     )
 
 
 def default_pipeline(
-    detector=None, fast_run_filter: bool = True, hr_spike_filter: bool = False
+    detector=None,
+    fast_run_filter: bool = True,
+    hr_spike_filter: bool = False,
+    include_triathlon_races: bool = False,
 ) -> Pipeline:
-    """Training chain (thesis chain + data-quality steps). Both filters ``False`` reproduces the
+    """Training chain. ``fast_run_filter=False, include_triathlon_races=True`` reproduces the
     thesis chain exactly. Same as ``cleaning_pipeline("train", ...)``."""
-    return cleaning_pipeline("train", detector, fast_run_filter, hr_spike_filter)
+    return cleaning_pipeline(
+        "train", detector, fast_run_filter, hr_spike_filter, include_triathlon_races
+    )

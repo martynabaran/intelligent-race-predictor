@@ -18,7 +18,6 @@ from race_predictor.exceptions import RacePredictorError
 from race_predictor.services import DISTANCES_M, RacePredictor, format_time, load_activities
 
 DATA_DIR = Path(os.environ.get("RACE_PREDICTOR_DATA", "data"))
-MODES = {"Road race": RaceMode.ROAD, "Triathlon (run leg)": RaceMode.TRIATHLON}
 MODEL_LABELS = {"Riegel": "the Riegel formula", "Ridge": "ridge regression"}
 
 
@@ -54,16 +53,15 @@ def main() -> None:
         upload = st.file_uploader("Strava `activities.csv` or Garmin Connect CSV", type="csv")
         samples = sample_files()
         sample = st.selectbox("...or try an anonymised sample", ["-"] + list(samples))
-        mode = MODES[st.radio("Race type", list(MODES))]
+        mode = RaceMode.ROAD  # running races only (no data for triathlon runs yet)
         elevation = st.number_input("Race elevation gain (m)", 0, 3000, 0, step=50)
         st.divider()
         predictor = get_predictor()
         model = predictor.model_name(mode)
         st.caption(
-            f"Model for this race type: {MODEL_LABELS.get(model, model)}, chosen by evaluation "
-            f"on {predictor.n_train_races_} races of {predictor.n_train_athletes_} athletes. "
-            "Ranges are the empirical 10-90% errors of this race type on athletes the model "
-            "had not seen."
+            f"Model: {MODEL_LABELS.get(model, model)}, chosen by evaluation on "
+            f"{predictor.n_train_races_} running races of {predictor.n_train_athletes_} athletes. "
+            "Ranges are the empirical 10-90% errors on athletes the model had not seen."
         )
 
     try:

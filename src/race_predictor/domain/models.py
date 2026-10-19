@@ -19,11 +19,12 @@ class ActivityType(StrEnum):
 class RaceMode(StrEnum):
     """Kind of race being predicted; models are chosen per mode (see ``models.router``).
 
-    Trail races are not a separate mode yet: only 9 races in the data have >200 m of climbing.
+    Only running races for now. Triathlon runs were dropped: 39 of the 41 detected ones were
+    brick training sessions (``docs/REVIEW_RACES.md``), leaving 2 real races. Trail races are not
+    a separate mode either: only 9 races have >200 m of climbing.
     """
 
     ROAD = "road"
-    TRIATHLON = "triathlon"  # the run leg of a triathlon, after the swim and the ride
 
 
 NAN = math.nan

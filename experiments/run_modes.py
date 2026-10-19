@@ -1,8 +1,9 @@
-"""Stage 10: one model per race mode vs. single models.
+"""Stage 10: which model for running races (the app's choice) - single models vs nested selection.
 
-`Router` is the fixed choice used by the app (Riegel for road races, ridge for triathlon runs).
-It was picked after looking at `docs/RESULTS_BREAKDOWN.md`, so `AutoRouter` repeats the choice
-inside every training fold (inner athlete-grouped CV) - its scores are a nested estimate.
+Triathlon runs are no longer races (39 of 41 were brick sessions, `docs/REVIEW_RACES.md`), so
+there is one mode. The app uses the Riegel formula; `AutoRouter` picks the model inside every
+training fold (inner athlete-grouped CV), so its scores are a nested estimate of "choose the
+best model" without peeking at the test athletes.
 
 python experiments/run_modes.py
 """
@@ -19,13 +20,12 @@ from race_predictor.evaluation.modes import AutoModeRouter
 from race_predictor.evaluation.runner import load_dataset, protocol_predictions
 from race_predictor.models import (
     HistGradientBoostingBaseline,
-    ModeRouter,
     RidgeBaseline,
     RiegelBaseline,
     RiegelCorrected,
 )
 
-SEGMENTS = ["all", "stand-alone", "triathlon"]
+SEGMENTS = ["all"]
 
 
 class RecordingAutoRouter(AutoModeRouter):
@@ -47,11 +47,10 @@ def main() -> None:
 
     ds = load_dataset(args.data)
     factories = {
-        "Riegel": RiegelBaseline,
+        "Riegel (app)": RiegelBaseline,
         "Ridge (previous app model)": RidgeBaseline,
         "HistGB": HistGradientBoostingBaseline,
         "Riegel+correction": RiegelCorrected,
-        "Router (road=Riegel, triathlon=Ridge)": ModeRouter,
         "AutoRouter (nested selection)": RecordingAutoRouter,
     }
     rows = []
@@ -73,6 +72,13 @@ def main() -> None:
     table.columns = [f"{m} {s}" for m, s in table.columns]
     table = table.round(2).reset_index()
 
+    grouped = raw[raw["protocol"] == "grouped-CV"]
+    per_distance = grouped[grouped["segment"].str.endswith("(stand-alone)")].pivot_table(
+        index="segment", columns="model", values="MAPE_%", sort=False
+    )
+    per_distance.insert(0, "n", grouped.groupby("segment")["n"].first().reindex(per_distance.index))
+    per_distance.index = per_distance.index.str.replace(" (stand-alone)", "")
+
     picks = {
         mode.value: dict(Counter(c[mode.value] for c in RecordingAutoRouter.choices))
         for mode in RaceMode
@@ -81,13 +87,16 @@ def main() -> None:
 
     print(table.to_string(index=False), picks_md, sep="\n\n")
     args.out.write_text(
-        "# Stage 10: model per race mode\n\n"
-        f"{len(ds)} races ({int(ds.static['is_triathlon'].sum())} triathlon runs), "
-        f"{ds.meta['athlete'].nunique()} athletes. Metrics on total race time; `MedAPE` = median "
-        "absolute percentage error. `Router` is the fixed choice used by the app; `AutoRouter` "
-        "re-selects the model per mode inside every training fold (inner grouped CV over Riegel, "
-        "Ridge, HistGB, Riegel+correction), so its scores are a nested, unbiased estimate of "
-        "the routing idea.\n\n" + table.to_markdown(index=False) + "\n\n"
+        "# Stage 10: model for running races\n\n"
+        f"{len(ds)} running races of {ds.meta['athlete'].nunique()} athletes (runs after a ride "
+        "are no longer races, see `REVIEW_RACES.md`). Metrics on total race time; `MedAPE` = "
+        "median absolute percentage error. The app uses Riegel; `AutoRouter` re-selects the "
+        "model inside every training fold (inner grouped CV over Riegel, Ridge, HistGB, "
+        "Riegel+correction), so its scores are a nested estimate.\n\n"
+        + table.to_markdown(index=False)
+        + "\n\n## MAPE per distance (grouped-CV)\n\n"
+        + per_distance.round(1).reset_index().to_markdown(index=False)
+        + "\n\n"
         f"## What AutoRouter chose ({len(RecordingAutoRouter.choices)} outer fits)\n\n"
         + picks_md
         + "\n"

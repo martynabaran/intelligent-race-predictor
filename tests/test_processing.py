@@ -74,8 +74,9 @@ def test_default_pipeline_switches():
     assert "RemoveImplausiblyFastRuns" in names(default_pipeline())
     assert "ValidateMaxHeartRate" not in names(default_pipeline())
     assert "ValidateMaxHeartRate" in names(default_pipeline(hr_spike_filter=True))
-    thesis = names(default_pipeline(fast_run_filter=False))
+    thesis = names(default_pipeline(fast_run_filter=False, include_triathlon_races=True))
     assert "RemoveImplausiblyFastRuns" not in thesis and len(thesis) == 6
+    assert names(default_pipeline())[-1] == "DropTriathlonRaces"
 
 
 def test_train_and_predict_share_the_cleaning_steps():
@@ -107,6 +108,24 @@ def test_predict_cleaning_drops_ride_but_keeps_runs_without_hr(frame, days):
     out = cleaning_pipeline("predict").run(df)
     assert len(out) == 6 and out["avg_hr"].notna().all()  # kept and imputed, not dropped
     assert 6.3 not in out["avg_speed_ms"].to_list()
+
+
+def test_runs_after_a_ride_are_history_not_races(frame, days):
+    df = frame(
+        [
+            *({"date": days(i), "distance_m": 8000.0} for i in range(5)),
+            {"date": days(6), "type": "Ride", "distance_m": 40000.0},
+            {"date": days(6) + pd.Timedelta(hours=1), "distance_m": 5000.0},  # brick run, 5 k
+            {"date": days(8), "distance_m": 10000.0, "avg_hr": 175.0},  # a real 10 k race
+        ]
+    )
+    df["avg_hr"] = df["avg_hr"].where(df.index == 7, 140.0)
+    out = default_pipeline().run(df)
+    brick = out[out["is_triathlon"] == 1]
+    assert len(brick) == 1 and not brick["is_race"].any()  # kept as history, not a race
+    assert out.loc[out["distance_m"] == 10000.0, "is_race"].all()
+    tri = default_pipeline(include_triathlon_races=True).run(df)
+    assert tri.loc[tri["is_triathlon"] == 1, "is_race"].all()  # the thesis behaviour
 
 
 def test_drop_athletes_without_hr(frame, days):

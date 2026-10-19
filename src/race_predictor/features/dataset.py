@@ -222,9 +222,9 @@ def build_query_dataset(
 
     Default ``race_date`` is the day after the last activity ("a race today"). The target ``y`` is
     a placeholder (zeros). Returns ``None`` when the history before ``race_date`` is too short.
-    ``mode`` sets ``is_triathlon`` (a road race by default).
+    ``mode`` is the kind of race (only road races for now, so ``is_triathlon`` is 0).
     """
-    is_tri = float(RaceMode(mode) is RaceMode.TRIATHLON)
+    is_tri = 0.0 if RaceMode(mode) is RaceMode.ROAD else 1.0
     df = df.sort_values("date")
     race_date = race_date if race_date is not None else df["date"].max() + pd.Timedelta(days=1)
     runs = df[df["type"] == "Run"]

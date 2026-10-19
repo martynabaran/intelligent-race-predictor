@@ -1,9 +1,9 @@
 """Choose the model by race mode (Strategy pattern).
 
-The error analysis (``docs/RESULTS_BREAKDOWN.md``) shows that no single model is best everywhere:
-the Riegel formula wins on stand-alone road races of unseen athletes, while a learned model
-handles the slower run leg of a triathlon. ``ModeRouter`` predicts each race with the model for
-its mode; every model is fitted on all races (the triathlon flag is one of its features).
+``ModeRouter`` predicts each race with the model for its mode; every model is fitted on all
+races. With only road races left (see :class:`~race_predictor.domain.RaceMode`) it holds one
+model - the Riegel formula, the most accurate on athletes the models had not seen
+(``docs/RESULTS_MODES.md``) - and is the place where future modes (e.g. trail) plug in.
 """
 
 from __future__ import annotations
@@ -16,12 +16,9 @@ import pandas as pd
 from race_predictor.domain import RaceMode
 from race_predictor.features import RaceDataset
 from race_predictor.models.base import RaceModel
-from race_predictor.models.baselines import RidgeBaseline, RiegelBaseline
+from race_predictor.models.baselines import RiegelBaseline
 
-DEFAULT_MODELS: dict[RaceMode, Callable[[], RaceModel]] = {
-    RaceMode.ROAD: RiegelBaseline,
-    RaceMode.TRIATHLON: RidgeBaseline,
-}
+DEFAULT_MODELS: dict[RaceMode, Callable[[], RaceModel]] = {RaceMode.ROAD: RiegelBaseline}
 
 
 def _label(factory) -> str:
@@ -29,14 +26,13 @@ def _label(factory) -> str:
 
 
 def race_modes(ds: RaceDataset) -> np.ndarray:
-    """Mode of every race in ``ds``."""
-    tri = ds.static["is_triathlon"].to_numpy() == 1
-    return np.where(tri, RaceMode.TRIATHLON, RaceMode.ROAD)
+    """Mode of every race in ``ds`` (all road races for now)."""
+    return np.full(len(ds), RaceMode.ROAD, dtype=object)
 
 
 class ModeRouter(RaceModel):
     def __init__(self, models: Mapping[RaceMode, Callable[[], RaceModel]] | None = None):
-        self.models = dict(models or DEFAULT_MODELS)
+        self.models = dict(DEFAULT_MODELS if models is None else models)
         if set(self.models) != set(RaceMode):
             raise ValueError(f"need one model per mode: {[m.value for m in RaceMode]}")
 
