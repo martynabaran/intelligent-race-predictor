@@ -2,11 +2,20 @@ import numpy as np
 import pandas as pd
 import pytest
 
+from race_predictor.domain import RaceMode
 from race_predictor.evaluation import chronological_split, evaluate, grouped_splits
 from race_predictor.evaluation.breakdown import breakdown, segment_masks
+from race_predictor.evaluation.modes import AutoModeRouter
 from race_predictor.evaluation.runner import compare_models, protocol_predictions
 from race_predictor.features import SEQ_FEATURES, build_race_dataset
-from race_predictor.models import RidgeBaseline, RiegelBaseline, riegel_time
+from race_predictor.models import (
+    ModeRouter,
+    RidgeBaseline,
+    RiegelBaseline,
+    RiegelCorrected,
+    race_modes,
+    riegel_time,
+)
 
 
 @pytest.fixture
@@ -109,3 +118,44 @@ def test_protocol_predictions_cover_both_protocols(races):
     assert set(out) == {"chronological", "grouped-CV"}
     pred, idx = out["grouped-CV"]
     assert sorted(idx) == list(range(len(ds))) and len(pred) == len(ds)
+
+
+def test_contributions_sum_to_prediction(races):
+    ds = build_race_dataset(races)
+    for model in (RiegelBaseline().fit(ds), RidgeBaseline().fit(ds)):
+        assert model.contributions(ds).sum(axis=1).to_numpy() == pytest.approx(model.predict(ds))
+
+
+def test_mode_router_uses_model_per_mode(races):
+    ds = build_race_dataset(races)
+    ds.static.loc[[0, 1], "is_triathlon"] = 1
+    router = ModeRouter().fit(ds)
+    pred = router.predict(ds)
+    riegel, ridge = RiegelBaseline().fit(ds).predict(ds), RidgeBaseline().fit(ds).predict(ds)
+    assert pred[:2] == pytest.approx(ridge[:2]) and pred[2:] == pytest.approx(riegel[2:])
+    assert router.name == "Router(road=Riegel, triathlon=Ridge)"
+    assert router.contributions(ds).sum(axis=1).to_numpy() == pytest.approx(pred)
+    assert list(race_modes(ds)[:3]) == [RaceMode.TRIATHLON, RaceMode.TRIATHLON, RaceMode.ROAD]
+
+
+def test_mode_router_needs_every_mode():
+    with pytest.raises(ValueError):
+        ModeRouter({RaceMode.ROAD: RiegelBaseline})
+
+
+def test_riegel_corrected_learns_systematic_slowdown(races):
+    ds = build_race_dataset(races)
+    ds.y = RiegelBaseline().fit(ds).predict(ds) * 1.08  # every race 8 % slower than Riegel
+    pred = RiegelCorrected(alpha=1e-3).fit(ds).predict(ds)
+    assert pred == pytest.approx(ds.y, rel=1e-3)
+
+
+def test_auto_router_picks_from_inner_cv(races):
+    ds = build_race_dataset(races)
+    auto = AutoModeRouter({"Riegel": RiegelBaseline, "Ridge": RidgeBaseline}, n_splits=3).fit(ds)
+    assert set(auto.chosen_) == set(RaceMode)
+    assert auto.chosen_[RaceMode.ROAD] == min(
+        auto.scores_[RaceMode.ROAD], key=auto.scores_[RaceMode.ROAD].get
+    )
+    assert auto.chosen_[RaceMode.TRIATHLON] == auto.chosen_[RaceMode.ROAD]  # no triathlons
+    assert np.isfinite(auto.predict(ds)).all()

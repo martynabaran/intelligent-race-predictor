@@ -31,7 +31,8 @@ pytest && ruff check .
 The app takes a Strava `activities.csv` or Garmin Connect CSV export and shows predicted 5 km / 10 km /
 half / marathon times with an 80 % range, a comparison with the Riegel formula, a form-over-time curve and
 the features driving the prediction. Ranges are empirical errors on athletes the model had not seen
-(roughly ±15 %); the model is trained on only 170 races of 14 athletes, so treat predictions as indicative.
+per race type (road races: about -7 % to +16 %); the models are fitted on only 170 races of 14 athletes, so treat
+predictions as indicative. Choose *road race* or *triathlon (run leg)*: each uses the model that was most accurate for it.
 
 ### What was built
 
@@ -44,12 +45,14 @@ the features driving the prediction. Ranges are empirical errors on athletes the
 | 5. Embedded | `models/distill.py`, `models/tflite.py` | Distilled 4 KB int8 TFLite model, ~130× smaller than the GRU at equal accuracy → [results](docs/RESULTS_EMBEDDED.md) |
 | 6. App | `predictor.py`, `cli.py`, `app/` | CLI + Streamlit app |
 | Error analysis | `evaluation/breakdown.py`, `processing/pipeline.py` | Errors split into stand-alone races, triathlon runs and distances; median APE; filters for a ride logged as a run and HR-sensor spikes → [breakdown](docs/RESULTS_BREAKDOWN.md) |
+| 10. Race modes | `models/router.py`, `models/hybrid.py`, `evaluation/modes.py` | Model per race mode: Riegel for road races, ridge for triathlon runs (the app's model now); nested selection confirms it → [modes](docs/RESULTS_MODES.md) |
 
 ### Headline findings (MAPE of race time on **unseen athletes**, 170 races)
 
 | Model | MAPE |
 |---|---|
-| Ridge regression (used by the app) | 9.7 % |
+| **Router: Riegel for road races, ridge for triathlon runs (used by the app)** | **7.9 %** (nested: 8.2 %) |
+| Ridge regression (previous app model) | 9.7 % |
 | Riegel formula | 11.0 % |
 | GRU / TCN / Transformer (3 seeds) | 15.0 % / 17.0 % / 17.7 % |
 | Distilled MLP, int8 TFLite (3.7 KB) | 12.9 % |
@@ -57,7 +60,8 @@ the features driving the prediction. Ranges are empirical errors on athletes the
 With this little data the simple models win; the sequence models need the pretraining of stage 3 to pay off.
 Most of the remaining error comes from triathlon runs (a quarter of the races). On **stand-alone races**, which are the
 ones the app predicts, the Riegel formula is the most accurate on unseen athletes: 6.6 % MAPE (median 4.6 %) vs 9.0 %
-for Ridge ([breakdown](docs/RESULTS_BREAKDOWN.md)).
+for Ridge ([breakdown](docs/RESULTS_BREAKDOWN.md)). Routing each race mode to the model that handles it best is what
+the app now does ([modes](docs/RESULTS_MODES.md)).
 Methodological notes (grouped CV by athlete, nested tuning, seed variance) are in the results files.
 
 ---

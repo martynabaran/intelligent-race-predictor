@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import numpy as np
+import pandas as pd
 from sklearn.ensemble import HistGradientBoostingRegressor
 from sklearn.impute import SimpleImputer
 from sklearn.linear_model import Ridge
@@ -48,6 +49,23 @@ class RiegelBaseline(RaceModel):
         pace = t / (dist / 1000.0)
         return np.where(np.isnan(pace), self._fallback, pace)
 
+    def contributions(self, ds: RaceDataset) -> pd.DataFrame:
+        """Exact split of the predicted pace (s/km): the reference run's pace plus Riegel's
+        distance adjustment (``(baseline)`` = training mean pace when there is no reference)."""
+        s = ds.static
+        ref_pace = s["riegel_ref_time_s"].to_numpy() / (
+            s["riegel_ref_distance_m"].to_numpy() / 1000
+        )
+        pace = self.predict(ds)
+        missing = np.isnan(ref_pace)
+        return pd.DataFrame(
+            {
+                "(baseline)": np.where(missing, pace, 0.0),
+                "best_run_pace": np.where(missing, 0.0, ref_pace),
+                "riegel_distance_adjustment": np.where(missing, 0.0, pace - ref_pace),
+            }
+        )
+
 
 class _TabularModel(RaceModel):
     def _estimator(self):
@@ -77,6 +95,15 @@ class RidgeBaseline(_TabularModel):
 
     def _estimator(self):
         return make_pipeline(SimpleImputer(strategy="median"), StandardScaler(), Ridge(self.alpha))
+
+    def contributions(self, ds: RaceDataset) -> pd.DataFrame:
+        """Exact per-feature contributions (s/km of pace; + = slower), relative to the average
+        training race; ``(baseline)`` = intercept. Rows sum to the prediction."""
+        imputer, scaler, ridge = (self.model_[i] for i in range(3))
+        z = scaler.transform(imputer.transform(self._x(ds)))
+        out = pd.DataFrame(z * ridge.coef_, columns=ds.tabular_columns)
+        out["(baseline)"] = float(ridge.intercept_)
+        return out
 
 
 class LightGBMBaseline(_TabularModel):

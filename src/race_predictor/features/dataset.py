@@ -12,6 +12,8 @@ from dataclasses import dataclass
 import numpy as np
 import pandas as pd
 
+from race_predictor.domain import RaceMode
+
 SEQ_FEATURES = [
     "days_to_race",
     "distance_m",
@@ -214,12 +216,15 @@ def build_query_dataset(
     elevation_gain_m: float = 0.0,
     days_window: int = 365,
     min_runs: int = 3,
+    mode: RaceMode = RaceMode.ROAD,
 ) -> RaceDataset | None:
     """Features for *hypothetical* races of one athlete (``df`` = that athlete's activities).
 
     Default ``race_date`` is the day after the last activity ("a race today"). The target ``y`` is
     a placeholder (zeros). Returns ``None`` when the history before ``race_date`` is too short.
+    ``mode`` sets ``is_triathlon`` (a road race by default).
     """
+    is_tri = float(RaceMode(mode) is RaceMode.TRIATHLON)
     df = df.sort_values("date")
     race_date = race_date if race_date is not None else df["date"].max() + pd.Timedelta(days=1)
     runs = df[df["type"] == "Run"]
@@ -227,7 +232,7 @@ def build_query_dataset(
     seqs, statics, metas = [], [], []
     for d in distances_m:
         example = _example(
-            df, runs, years_exp, race_date, d, elevation_gain_m, 0.0, days_window, min_runs
+            df, runs, years_exp, race_date, d, elevation_gain_m, is_tri, days_window, min_runs
         )
         if example is None:
             return None
