@@ -3,7 +3,8 @@ import pandas as pd
 import pytest
 
 from race_predictor.evaluation import chronological_split, evaluate, grouped_splits
-from race_predictor.evaluation.runner import compare_models
+from race_predictor.evaluation.breakdown import breakdown, segment_masks
+from race_predictor.evaluation.runner import compare_models, protocol_predictions
 from race_predictor.features import SEQ_FEATURES, build_race_dataset
 from race_predictor.models import RidgeBaseline, RiegelBaseline, riegel_time
 
@@ -82,4 +83,29 @@ def test_models_and_comparison(races):
 def test_metrics():
     m = evaluate([100, 200], [110, 180])
     assert m["mae"] == 15 and m["mape_pct"] == pytest.approx(10.0)
+    one_outlier = evaluate([100, 100, 100], [101, 102, 160])
+    assert one_outlier["median_ape_pct"] == pytest.approx(2.0)
+    assert one_outlier["mape_pct"] == pytest.approx(21.0)
     assert np.isfinite(m["nrmse_pct"])
+
+
+def test_breakdown_segments(races):
+    ds = build_race_dataset(races)
+    ds.static.loc[[0, 1], "is_triathlon"] = 1
+    masks = segment_masks(ds)
+    assert masks["stand-alone"].sum() + masks["triathlon"].sum() == len(ds)
+    assert masks["10k (stand-alone)"].sum() == len(ds) - 2
+
+    index = np.arange(len(ds))
+    table = breakdown(ds, ds.y * 1.1, index).set_index("segment")
+    assert table.loc["all", "n"] == len(ds) and table.loc["triathlon", "n"] == 2
+    assert table["MAPE_%"].to_numpy() == pytest.approx(10.0)
+    assert "triathlon" not in breakdown(ds, ds.y[2:], index[2:])["segment"].to_list()
+
+
+def test_protocol_predictions_cover_both_protocols(races):
+    ds = build_race_dataset(races)
+    out = {p: (pred, idx) for p, pred, idx in protocol_predictions(ds, RidgeBaseline, 3)}
+    assert set(out) == {"chronological", "grouped-CV"}
+    pred, idx = out["grouped-CV"]
+    assert sorted(idx) == list(range(len(ds))) and len(pred) == len(ds)

@@ -5,8 +5,10 @@ from race_predictor.processing.pipeline import (
     MarkTriathlonRuns,
     Pipeline,
     RemoveAnomalies,
+    RemoveImplausiblyFastRuns,
     Step,
     ValidateHeartRate,
+    ValidateMaxHeartRate,
     default_pipeline,
 )
 from race_predictor.processing.races import (
@@ -26,9 +28,11 @@ __all__ = [
     "MarkTriathlonRuns",
     "Pipeline",
     "RemoveAnomalies",
+    "RemoveImplausiblyFastRuns",
     "StandardDistanceDetector",
     "Step",
     "ValidateHeartRate",
+    "ValidateMaxHeartRate",
     "default_pipeline",
     "distance_label",
     "training_windows",

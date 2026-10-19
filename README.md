@@ -43,6 +43,7 @@ the features driving the prediction. Ranges are empirical errors on athletes the
 | 4. Architectures + XAI | `models/sequence.py`, `evaluation/explain.py` | GRU vs TCN vs Transformer, SHAP and integrated gradients → [architectures](docs/RESULTS_ARCHITECTURES.md), [explainability](docs/RESULTS_EXPLAINABILITY.md) |
 | 5. Embedded | `models/distill.py`, `models/tflite.py` | Distilled 4 KB int8 TFLite model, ~130× smaller than the GRU at equal accuracy → [results](docs/RESULTS_EMBEDDED.md) |
 | 6. App | `predictor.py`, `cli.py`, `app/` | CLI + Streamlit app |
+| Error analysis | `evaluation/breakdown.py`, `processing/pipeline.py` | Errors split into stand-alone races, triathlon runs and distances; median APE; filters for a ride logged as a run and HR-sensor spikes → [breakdown](docs/RESULTS_BREAKDOWN.md) |
 
 ### Headline findings (MAPE of race time on **unseen athletes**, 170 races)
 
@@ -54,6 +55,9 @@ the features driving the prediction. Ranges are empirical errors on athletes the
 | Distilled MLP, int8 TFLite (3.7 KB) | 12.9 % |
 
 With this little data the simple models win; the sequence models need the pretraining of stage 3 to pay off.
+Most of the remaining error comes from triathlon runs (a quarter of the races). On **stand-alone races**, which are the
+ones the app predicts, the Riegel formula is the most accurate on unseen athletes: 6.6 % MAPE (median 4.6 %) vs 9.0 %
+for Ridge ([breakdown](docs/RESULTS_BREAKDOWN.md)).
 Methodological notes (grouped CV by athlete, nested tuning, seed variance) are in the results files.
 
 ---

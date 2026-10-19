@@ -67,6 +67,40 @@ class ValidateHeartRate(Step):
         return df[ok].reset_index(drop=True)
 
 
+class ValidateMaxHeartRate(Step):
+    """Blank out max heart rate readings above ``high`` (sensor spikes).
+
+    ``EstimateHRMax`` takes each athlete's highest reading, so a single spike (up to 253 bpm in the
+    thesis data) inflated HRmax and with it the heart-rate threshold used for race detection.
+    """
+
+    def __init__(self, high=220.0):
+        self.high = high
+
+    def apply(self, df: pd.DataFrame) -> pd.DataFrame:
+        df = df.copy()
+        df["max_hr"] = df["max_hr"].where(~(df["max_hr"] > self.high))
+        return df
+
+
+class RemoveImplausiblyFastRuns(Step):
+    """Drop runs faster than ``max_rel_speed`` x the athlete's median run speed.
+
+    In the thesis data genuine runs reach at most ~1.63x the athlete's median; the one run above
+    1.7x (12 km at 2:38/km, average HR 131) is a ride logged as a run. As the athlete's "best"
+    run it set ``best_pace_s_km`` and the Riegel reference for every one of their races.
+    """
+
+    def __init__(self, max_rel_speed=1.7):
+        self.max_rel_speed = max_rel_speed
+
+    def apply(self, df: pd.DataFrame) -> pd.DataFrame:
+        runs = df["type"] == "Run"
+        median = df["avg_speed_ms"].where(runs).groupby(df["athlete"]).transform("median")
+        bad = runs & (df["avg_speed_ms"] > self.max_rel_speed * median)
+        return df[~bad].reset_index(drop=True)
+
+
 class DropAthletesWithoutHR(Step):
     def apply(self, df: pd.DataFrame) -> pd.DataFrame:
         has_hr = df.groupby("athlete")[["avg_hr", "max_hr"]].apply(lambda g: g.notna().any().any())
@@ -116,13 +150,25 @@ class MarkTriathlonRuns(Step):
         return df
 
 
-def default_pipeline(detector=None) -> Pipeline:
-    """Cleaning chain used in the thesis' personalized model."""
+def default_pipeline(
+    detector=None, fast_run_filter: bool = True, hr_spike_filter: bool = False
+) -> Pipeline:
+    """Cleaning chain of the thesis' personalized model, plus data-quality steps from the error
+    analysis (``docs/RESULTS_BREAKDOWN.md``).
+
+    ``fast_run_filter`` (``RemoveImplausiblyFastRuns``) only drops a non-run, so the detected races
+    are unchanged. ``hr_spike_filter`` (``ValidateMaxHeartRate``) lowers inflated HRmax, which makes
+    the HR-based race detector find more races; it is off until those races are validated.
+    Both ``False`` reproduces the thesis chain exactly.
+    """
     from race_predictor.processing.races import DetectRaces
 
+    extra = [RemoveImplausiblyFastRuns()] if fast_run_filter else []
+    extra += [ValidateMaxHeartRate()] if hr_spike_filter else []
     return Pipeline(
         [
             RemoveAnomalies(),
+            *extra,
             ValidateHeartRate(),
             DropAthletesWithoutHR(),
             EstimateHRMax(),
