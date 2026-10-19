@@ -1,7 +1,7 @@
 """Stage 10: which model for running races (the app's choice) - single models vs nested selection.
 
 Triathlon runs are no longer races (39 of 41 were brick sessions, `docs/REVIEW_RACES.md`), so
-there is one mode. The app uses the Riegel formula; `AutoRouter` picks the model inside every
+there is one mode. The app uses Riegel+correction; `AutoRouter` picks the model inside every
 training fold (inner athlete-grouped CV), so its scores are a nested estimate of "choose the
 best model" without peeking at the test athletes.
 
@@ -47,10 +47,10 @@ def main() -> None:
 
     ds = load_dataset(args.data)
     factories = {
-        "Riegel (app)": RiegelBaseline,
+        "Riegel": RiegelBaseline,
         "Ridge (previous app model)": RidgeBaseline,
         "HistGB": HistGradientBoostingBaseline,
-        "Riegel+correction": RiegelCorrected,
+        "Riegel+correction (app)": RiegelCorrected,
         "AutoRouter (nested selection)": RecordingAutoRouter,
     }
     rows = []
@@ -79,21 +79,39 @@ def main() -> None:
     per_distance.insert(0, "n", grouped.groupby("segment")["n"].first().reindex(per_distance.index))
     per_distance.index = per_distance.index.str.replace(" (stand-alone)", "")
 
+    ref_segments = ["reference: race", "reference: training run"]
+    by_reference = raw[raw["segment"].isin(ref_segments)].pivot_table(
+        index=["protocol", "model"],
+        columns="segment",
+        values=["MAPE_%", "MedAPE_%"],
+        sort=False,
+    )
+    by_reference = by_reference.reindex(
+        columns=[(m, s) for m in ("MAPE_%", "MedAPE_%") for s in ref_segments]
+    )
+    by_reference.columns = [f"{m} {s.split(': ')[1]}" for m, s in by_reference.columns]
+    n_ref = {s: int(grouped.loc[grouped["segment"] == s, "n"].iloc[0]) for s in ref_segments}
+
     picks = {
         mode.value: dict(Counter(c[mode.value] for c in RecordingAutoRouter.choices))
         for mode in RaceMode
     }
     picks_md = "\n".join(f"- `{mode}`: {counts}" for mode, counts in picks.items())
 
-    print(table.to_string(index=False), picks_md, sep="\n\n")
+    print(table.to_string(index=False), by_reference.round(2).to_string(), picks_md, sep="\n\n")
     args.out.write_text(
         "# Stage 10: model for running races\n\n"
         f"{len(ds)} running races of {ds.meta['athlete'].nunique()} athletes (runs after a ride "
         "are no longer races, see `REVIEW_RACES.md`). Metrics on total race time; `MedAPE` = "
-        "median absolute percentage error. The app uses Riegel; `AutoRouter` re-selects the "
+        "median absolute percentage error. The app uses Riegel+correction; `AutoRouter` re-selects the "
         "model inside every training fold (inner grouped CV over Riegel, Ridge, HistGB, "
         "Riegel+correction), so its scores are a nested estimate.\n\n"
         + table.to_markdown(index=False)
+        + "\n\n## By what Riegel projects from: a previous race or a training run\n\n"
+        f"The reference is the athlete's fastest >=5 km run of the past year: a detected race "
+        f"for {n_ref['reference: race']} races, a training run for "
+        f"{n_ref['reference: training run']}.\n\n"
+        + by_reference.round(2).reset_index().to_markdown(index=False)
         + "\n\n## MAPE per distance (grouped-CV)\n\n"
         + per_distance.round(1).reset_index().to_markdown(index=False)
         + "\n\n"

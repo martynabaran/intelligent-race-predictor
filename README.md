@@ -31,7 +31,7 @@ pytest && ruff check .
 The app takes a Strava `activities.csv` or Garmin Connect CSV export and shows predicted 5 km / 10 km /
 half / marathon times with an 80 % range, a comparison with the Riegel formula, a form-over-time curve and
 an explanation of the prediction. It predicts **running races** (no triathlon runs, see below) with the Riegel
-formula, the most accurate model on athletes it had not seen. Ranges are the empirical 10–90 % errors on such athletes
+formula times a correction learned from past races, the most accurate model on athletes it had not seen. Ranges are the empirical 10–90 % errors on such athletes
 (about −7 % to +16 %). The models are evaluated on only 129 races of 12 athletes, so treat predictions as indicative.
 
 ### What was built
@@ -52,15 +52,16 @@ formula, the most accurate model on athletes it had not seen. Ranges are the emp
 
 | Model | MAPE | median |
 |---|---|---|
-| **Riegel formula (used by the app)** | **6.6 %** | 4.6 % |
-| Riegel × learned correction (hybrid) | 6.5 % (nested selection: 6.7 %) | 5.0 % |
+| **Riegel × learned correction (used by the app)** | **6.5 %** (nested selection: 6.7 %) | 5.0 % |
+| Riegel formula | 6.6 % | 4.6 % |
 | Ridge regression (previous app model) | 10.7 % | 8.5 % |
 | Gradient boosting | 14.8 % | 14.4 % |
 
 The race labels mattered more than the model. A quarter of the detected "races" were runs after a ride. 39 of those 41
 were brick training sessions, not races ([review](docs/REVIEW_RACES.md)), so the app now predicts running races only
 ([breakdown](docs/RESULTS_BREAKDOWN.md), [modes](docs/RESULTS_MODES.md)). On unseen athletes the Riegel formula is as
-good as anything learned. The hybrid helps on long races (marathon 13.2 → 10.1 %, 8 races). For athletes already in the
+good as anything learned. The learned correction helps on long races (marathon 13.2 → 10.1 %, 8 races). Riegel itself
+is only as good as its reference run: 5.7 % when it projects from a previous race, 8.4 % from a training run. For athletes already in the
 training data, learned models win (Ridge 7.8 % vs Riegel 9.5 %, chronological protocol).
 
 > Results of stages 3–5 (sequence models, distillation, transfer) were computed on the earlier 170-race set that still

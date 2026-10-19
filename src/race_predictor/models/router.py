@@ -2,7 +2,7 @@
 
 ``ModeRouter`` predicts each race with the model for its mode; every model is fitted on all
 races. With only road races left (see :class:`~race_predictor.domain.RaceMode`) it holds one
-model - the Riegel formula, the most accurate on athletes the models had not seen
+model - Riegel with a learned correction, the most accurate on athletes the models had not seen
 (``docs/RESULTS_MODES.md``) - and is the place where future modes (e.g. trail) plug in.
 """
 
@@ -16,9 +16,9 @@ import pandas as pd
 from race_predictor.domain import RaceMode
 from race_predictor.features import RaceDataset
 from race_predictor.models.base import RaceModel
-from race_predictor.models.baselines import RiegelBaseline
+from race_predictor.models.hybrid import RiegelCorrected
 
-DEFAULT_MODELS: dict[RaceMode, Callable[[], RaceModel]] = {RaceMode.ROAD: RiegelBaseline}
+DEFAULT_MODELS: dict[RaceMode, Callable[[], RaceModel]] = {RaceMode.ROAD: RiegelCorrected}
 
 
 def _label(factory) -> str:

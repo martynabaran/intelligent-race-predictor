@@ -18,7 +18,11 @@ from race_predictor.exceptions import RacePredictorError
 from race_predictor.services import DISTANCES_M, RacePredictor, format_time, load_activities
 
 DATA_DIR = Path(os.environ.get("RACE_PREDICTOR_DATA", "data"))
-MODEL_LABELS = {"Riegel": "the Riegel formula", "Ridge": "ridge regression"}
+MODEL_LABELS = {
+    "Riegel": "the Riegel formula",
+    "Riegel+correction": "the Riegel formula with a learned correction",
+    "Ridge": "ridge regression",
+}
 
 
 @st.cache_resource(show_spinner="Training the model on the bundled race data...")
@@ -38,6 +42,28 @@ def load_upload(upload) -> pd.DataFrame:
         return load_activities(tmp.name, athlete_id="you")
     finally:
         os.unlink(tmp.name)
+
+
+def explain_riegel(predictor, activities, contrib, label: str) -> None:
+    """Prediction = the Riegel projection of the reference run (+ the model's correction)."""
+    ref = predictor.reference_run(activities)
+    km = DISTANCES_M[label] / 1000
+    riegel = (contrib["best_run_pace"] + contrib.get("riegel_distance_adjustment", 0.0)) * km
+    correction = contrib.get("model_correction", 0.0) * km
+    st.markdown(
+        f"Your fastest run of 5 km or more in the last year: **{ref['distance_m'] / 1000:.1f} km "
+        f"in {format_time(ref['time_s'])}** ({format_time(ref['pace_s_km'])} per km).\n\n"
+        f"- Riegel formula, T2 = T1·(D2/D1)^1.06, projects it to {label}: "
+        f"**{format_time(riegel)}**\n"
+        f"- Learned correction: **{'+' if correction >= 0 else '−'}"
+        f"{format_time(abs(correction))}**\n"
+        f"- Prediction: **{format_time(riegel + correction)}**"
+    )
+    st.caption(
+        "The correction is learned from past races: Riegel tends to be optimistic for long "
+        "races and when your fastest run was a training run rather than a race. On athletes it "
+        "had not seen, this was the most accurate model (median error ~5%)."
+    )
 
 
 def main() -> None:
@@ -127,20 +153,12 @@ def main() -> None:
             st.caption("Lower is better: the time the model would have predicted on each date.")
     with right:
         st.subheader("What drives the prediction")
-        if model == "Riegel":
-            ref = predictor.reference_run(activities)
-            km = ref["distance_m"] / 1000
-            st.markdown(
-                f"Your fastest run of 5 km or more in the last year: **{km:.1f} km in "
-                f"{format_time(ref['time_s'])}** ({format_time(ref['pace_s_km'])} per km). "
-                "For road races the Riegel formula projects it to each distance, "
-                "T2 = T1·(D2/D1)^1.06. On athletes it had not seen it was the most accurate "
-                "model for road races (median error ~5%)."
-            )
-            return
         contrib = predictor.explain(
             activities, DISTANCES_M[label], elevation_gain_m=float(elevation), mode=mode
         )
+        if "best_run_pace" in contrib:
+            explain_riegel(predictor, activities, contrib, label)
+            return
         top = contrib.drop("(baseline)").head(8)[::-1]
         fig = go.Figure(
             go.Bar(

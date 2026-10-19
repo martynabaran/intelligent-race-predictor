@@ -100,8 +100,8 @@ def test_predictor_end_to_end(frame):
     assert t_slow["riegel_s"].notna().all()
 
     query = build_query_dataset(prepare_activities(slow), [10000.0])
-    contrib = predictor.explain(slow, 10000.0)  # road race -> Riegel
-    assert predictor.model_name() == "Riegel" and "best_run_pace" in contrib.index
+    contrib = predictor.explain(slow, 10000.0)  # road race -> Riegel + learned correction
+    assert predictor.model_name() == "Riegel+correction" and "best_run_pace" in contrib.index
     assert contrib.sum() == pytest.approx(predictor._pace(query)[0], rel=1e-6)
     ref = predictor.reference_run(slow)
     assert ref["pace_s_km"] == pytest.approx(contrib["best_run_pace"])
@@ -160,7 +160,8 @@ def test_streamlit_app_renders_sample(monkeypatch):
     assert len(at.metric) == 4 and at.metric[3].label == "Marathon"
     assert any("fastest run" in m.value for m in at.markdown)  # road race -> Riegel explanation
 
-    assert any("Riegel formula" in c.value for c in at.sidebar.caption)
+    assert any("learned correction" in c.value for c in at.sidebar.caption)
+    assert any("Learned correction" in m.value for m in at.markdown)
     assert not at.sidebar.radio  # no race-type choice: running races only
 
 
@@ -174,7 +175,7 @@ def test_prediction_contract(frame):
     athlete = make_athlete(frame)
     items = p.predictions(athlete)
     assert all(isinstance(i, Prediction) for i in items) and len(items) == 4
-    assert items[0].mode is RaceMode.ROAD and items[0].model == "Riegel"
+    assert items[0].mode is RaceMode.ROAD and items[0].model == "Riegel+correction"
     table = p.predict(athlete)
     assert list(table.columns) == PREDICTION_COLUMNS
-    assert table["mode"].eq(RaceMode.ROAD).all() and table["model"].eq("Riegel").all()
+    assert table["mode"].eq(RaceMode.ROAD).all() and table["model"].eq("Riegel+correction").all()
