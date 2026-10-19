@@ -1,8 +1,9 @@
 """High-level API used by the CLI and the Streamlit app.
 
-``RacePredictor`` wraps the best robust model from the evaluation (ridge regression on tabular
-training features), adds empirical prediction intervals from out-of-fold errors on unseen
-athletes, a Riegel comparison, an exact linear explanation and a form-over-time curve.
+``RacePredictor`` wraps the model chosen by the evaluation - a :class:`ModeRouter` (Riegel for road
+races, ridge regression for the run leg of a triathlon, see ``docs/RESULTS_MODES.md``) - and adds
+empirical prediction intervals per race mode from out-of-fold errors on unseen athletes, a Riegel
+comparison, an exact explanation and a form-over-time curve.
 """
 
 from __future__ import annotations
@@ -12,10 +13,11 @@ from pathlib import Path
 import numpy as np
 import pandas as pd
 
+from race_predictor.domain import RaceMode
 from race_predictor.evaluation.splits import grouped_splits
 from race_predictor.exceptions import DataValidationError
 from race_predictor.features import RaceDataset, build_query_dataset
-from race_predictor.models import RidgeBaseline
+from race_predictor.models import ModeRouter, race_modes
 from race_predictor.models.base import RaceModel
 from race_predictor.models.baselines import riegel_time
 from race_predictor.processing import ImputeMissing, Pipeline, RemoveAnomalies, ValidateHeartRate
@@ -40,26 +42,41 @@ def prepare_activities(df: pd.DataFrame) -> pd.DataFrame:
 class RacePredictor:
     def __init__(
         self,
-        model_factory=RidgeBaseline,
+        model_factory=ModeRouter,
         interval: tuple[float, float] = (0.1, 0.9),
         n_splits: int = 5,
+        min_mode_races: int = 15,
     ):
         self.model_factory = model_factory
         self.interval = interval
         self.n_splits = n_splits
+        self.min_mode_races = min_mode_races
 
     # ----- training -------------------------------------------------------------------------
     def fit(self, ds: RaceDataset) -> RacePredictor:
         self.model_: RaceModel = self.model_factory().fit(ds)
-        ratios = []
+        ratios, modes = [], []
         for tr, te in grouped_splits(ds, self.n_splits):
-            pred = self.model_factory().fit(ds.subset(tr)).predict(ds.subset(te))
-            ratios.append(ds.subset(te).y / pred)
-        ratios = np.clip(np.concatenate(ratios), 0.5, 2.0)
-        self.ratio_low_, self.ratio_high_ = np.quantile(ratios, self.interval)
+            test = ds.subset(te)
+            ratios.append(test.y / self.model_factory().fit(ds.subset(tr)).predict(test))
+            modes.append(race_modes(test))
+        ratios, modes = np.clip(np.concatenate(ratios), 0.5, 2.0), np.concatenate(modes)
+        # Interval per mode (errors differ a lot); pooled when a mode has too few races.
+        pooled = tuple(np.quantile(ratios, self.interval))
+        self.ratios_ = {
+            mode: tuple(np.quantile(ratios[modes == mode], self.interval))
+            if (modes == mode).sum() >= self.min_mode_races
+            else pooled
+            for mode in RaceMode
+        }
         self.n_train_races_ = len(ds)
         self.n_train_athletes_ = ds.meta["athlete"].nunique()
         return self
+
+    def model_name(self, mode: RaceMode = RaceMode.ROAD) -> str:
+        """Name of the model used for ``mode``."""
+        model = self.model_.model_for(mode) if hasattr(self.model_, "model_for") else self.model_
+        return model.name
 
     @classmethod
     def from_data_dir(cls, data_dir: str | Path = "data", **kwargs) -> RacePredictor:
@@ -68,9 +85,11 @@ class RacePredictor:
         return cls(**kwargs).fit(load_dataset(Path(data_dir)))
 
     # ----- inference ------------------------------------------------------------------------
-    def _query(self, activities, distances_m, race_date, elevation_gain_m) -> RaceDataset:
+    def _query(
+        self, activities, distances_m, race_date, elevation_gain_m, mode=RaceMode.ROAD
+    ) -> RaceDataset:
         df = prepare_activities(activities)
-        ds = build_query_dataset(df, list(distances_m), race_date, elevation_gain_m)
+        ds = build_query_dataset(df, list(distances_m), race_date, elevation_gain_m, mode=mode)
         if ds is None:
             raise DataValidationError(
                 "Need at least 3 runs in the 365 days before the race date to make a prediction."
@@ -86,10 +105,12 @@ class RacePredictor:
         distances_m: dict[str, float] | None = None,
         race_date: pd.Timestamp | None = None,
         elevation_gain_m: float = 0.0,
+        mode: RaceMode = RaceMode.ROAD,
     ) -> pd.DataFrame:
         """Predicted time with an interval and the Riegel estimate, one row per distance."""
         distances_m = distances_m or DISTANCES_M
-        ds = self._query(activities, distances_m.values(), race_date, elevation_gain_m)
+        ds = self._query(activities, distances_m.values(), race_date, elevation_gain_m, mode)
+        low, high = self.ratios_[RaceMode(mode)]
         pace = self._pace(ds)
         d = ds.meta["race_distance_m"].to_numpy()
         time = pace * d / 1000
@@ -100,24 +121,32 @@ class RacePredictor:
                 "distance": list(distances_m),
                 "distance_m": d,
                 "time_s": time,
-                "low_s": time * self.ratio_low_,
-                "high_s": time * self.ratio_high_,
+                "low_s": time * low,
+                "high_s": time * high,
                 "riegel_s": riegel,
             }
         )
 
     def explain(
-        self, activities: pd.DataFrame, distance_m: float, race_date=None, elevation_gain_m=0.0
+        self,
+        activities: pd.DataFrame,
+        distance_m: float,
+        race_date=None,
+        elevation_gain_m=0.0,
+        mode: RaceMode = RaceMode.ROAD,
     ) -> pd.Series:
-        """Exact per-feature contribution (s/km of pace; + = slower) for a ridge model, relative
-        to the average training race. Includes ``(baseline)`` = intercept + mean effect."""
-        ds = self._query(activities, [distance_m], race_date, elevation_gain_m)
-        pipe = self.model_.model_
-        imputer, scaler, ridge = pipe[0], pipe[1], pipe[2]
-        z = scaler.transform(imputer.transform(self.model_._x(ds)))[0]
-        contrib = pd.Series(z * ridge.coef_, index=ds.tabular_columns)
-        contrib["(baseline)"] = float(ridge.intercept_)
-        return contrib.sort_values(key=lambda c: -c.abs())
+        """Exact contributions to the predicted pace (s/km; + = slower) from the model used for
+        ``mode``; they sum to the prediction. Ridge: per feature plus ``(baseline)``; Riegel: the
+        reference run's pace plus the distance adjustment."""
+        ds = self._query(activities, [distance_m], race_date, elevation_gain_m, mode)
+        contrib = self.model_.contributions(ds).iloc[0]
+        return contrib[contrib != 0].sort_values(key=lambda c: -c.abs())
+
+    def reference_run(self, activities: pd.DataFrame, race_date=None) -> dict[str, float]:
+        """The fastest >=5 km run of the last year that the Riegel formula projects from."""
+        s = self._query(activities, [10000.0], race_date, 0.0).static.iloc[0]
+        d, t = float(s["riegel_ref_distance_m"]), float(s["riegel_ref_time_s"])
+        return {"distance_m": d, "time_s": t, "pace_s_km": t / (d / 1000) if d else np.nan}
 
     def form_curve(
         self,

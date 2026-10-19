@@ -13,11 +13,14 @@ import pandas as pd
 import plotly.graph_objects as go
 import streamlit as st
 
+from race_predictor.domain import RaceMode
 from race_predictor.exceptions import RacePredictorError
 from race_predictor.predictor import DISTANCES_M, RacePredictor, format_time
 from race_predictor.sources import load_activities
 
 DATA_DIR = Path(os.environ.get("RACE_PREDICTOR_DATA", "data"))
+MODES = {"Road race": RaceMode.ROAD, "Triathlon (run leg)": RaceMode.TRIATHLON}
+MODEL_LABELS = {"Riegel": "the Riegel formula", "Ridge": "ridge regression"}
 
 
 @st.cache_resource(show_spinner="Training the model on the bundled race data...")
@@ -52,13 +55,16 @@ def main() -> None:
         upload = st.file_uploader("Strava `activities.csv` or Garmin Connect CSV", type="csv")
         samples = sample_files()
         sample = st.selectbox("...or try an anonymised sample", ["-"] + list(samples))
+        mode = MODES[st.radio("Race type", list(MODES))]
         elevation = st.number_input("Race elevation gain (m)", 0, 3000, 0, step=50)
         st.divider()
         predictor = get_predictor()
+        model = predictor.model_name(mode)
         st.caption(
-            f"Model: ridge regression trained on {predictor.n_train_races_} races of "
-            f"{predictor.n_train_athletes_} athletes. Ranges are the empirical 10-90% errors "
-            "measured on athletes the model had not seen - expect roughly ±15%."
+            f"Model for this race type: {MODEL_LABELS.get(model, model)}, chosen by evaluation "
+            f"on {predictor.n_train_races_} races of {predictor.n_train_athletes_} athletes. "
+            "Ranges are the empirical 10-90% errors of this race type on athletes the model "
+            "had not seen."
         )
 
     try:
@@ -69,7 +75,7 @@ def main() -> None:
         else:
             st.info("Upload an export (or pick a sample) in the sidebar to get started.")
             return
-        table = predictor.predict(activities, elevation_gain_m=float(elevation))
+        table = predictor.predict(activities, elevation_gain_m=float(elevation), mode=mode)
     except RacePredictorError as e:
         st.error(str(e))
         return
@@ -124,8 +130,19 @@ def main() -> None:
             st.caption("Lower is better: the time the model would have predicted on each date.")
     with right:
         st.subheader("What drives the prediction")
+        if model == "Riegel":
+            ref = predictor.reference_run(activities)
+            km = ref["distance_m"] / 1000
+            st.markdown(
+                f"Your fastest run of 5 km or more in the last year: **{km:.1f} km in "
+                f"{format_time(ref['time_s'])}** ({format_time(ref['pace_s_km'])} per km). "
+                "For road races the Riegel formula projects it to each distance, "
+                "T2 = T1·(D2/D1)^1.06. On athletes it had not seen it was the most accurate "
+                "model for road races (median error ~5%)."
+            )
+            return
         contrib = predictor.explain(
-            activities, DISTANCES_M[label], elevation_gain_m=float(elevation)
+            activities, DISTANCES_M[label], elevation_gain_m=float(elevation), mode=mode
         )
         top = contrib.drop("(baseline)").head(8)[::-1]
         fig = go.Figure(

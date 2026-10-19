@@ -6,12 +6,17 @@ from race_predictor.models.baselines import (
     RiegelBaseline,
     riegel_time,
 )
+from race_predictor.models.hybrid import RiegelCorrected
+from race_predictor.models.router import ModeRouter, race_modes
 
 __all__ = [
     "HistGradientBoostingBaseline",
     "LightGBMBaseline",
+    "ModeRouter",
     "RaceModel",
-    "RiegelBaseline",
     "RidgeBaseline",
+    "RiegelBaseline",
+    "RiegelCorrected",
+    "race_modes",
     "riegel_time",
 ]
