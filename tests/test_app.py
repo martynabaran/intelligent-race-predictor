@@ -186,3 +186,19 @@ def test_cli_rejects_unknown_mode(tmp_path):
     export.write_text("a,b\n1,2\n")
     result = runner.invoke(app, ["predict", str(export), "--mode", "trail"])
     assert result.exit_code == 1 and "unknown --mode" in result.output
+
+
+def test_prediction_contract(frame):
+    from race_predictor import predictor as alias
+    from race_predictor.services import PREDICTION_COLUMNS, Prediction
+    from race_predictor.services import RacePredictor as Service
+
+    assert alias.RacePredictor is Service  # old import path still works
+    p = Service(n_splits=3).fit(build_race_dataset(synthetic_training(frame)))
+    athlete = make_athlete(frame)
+    items = p.predictions(athlete, mode=RaceMode.TRIATHLON)
+    assert all(isinstance(i, Prediction) for i in items) and len(items) == 4
+    assert items[0].mode is RaceMode.TRIATHLON and items[0].model == "Ridge"
+    table = p.predict(athlete)
+    assert list(table.columns) == PREDICTION_COLUMNS
+    assert table["mode"].eq(RaceMode.ROAD).all() and table["model"].eq("Riegel").all()
