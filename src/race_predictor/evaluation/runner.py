@@ -19,7 +19,7 @@ from race_predictor.models import (
     RiegelBaseline,
 )
 from race_predictor.models.base import RaceModel
-from race_predictor.processing import Pipeline, default_pipeline
+from race_predictor.processing import Pipeline, cleaning_pipeline
 from race_predictor.sources import load_directory
 from race_predictor.utils import timer
 
@@ -90,12 +90,13 @@ def default_factories(with_gru: bool = False) -> dict[str, ModelFactory]:
 
 
 def load_dataset(data_dir: Path, pipeline: Pipeline | None = None) -> RaceDataset:
-    """Races from the Strava + Garmin exports; ``pipeline`` defaults to ``default_pipeline()``."""
+    """Races from the Strava + Garmin exports; ``pipeline`` defaults to
+    ``cleaning_pipeline("train")``."""
     frames = [
         load_directory(data_dir / "strava_activities"),
         load_directory(data_dir / "garmin_activities"),
     ]
-    pipeline = pipeline or default_pipeline()
+    pipeline = pipeline or cleaning_pipeline("train")
     return build_race_dataset(pipeline.run(pd.concat(frames, ignore_index=True)))
 
 

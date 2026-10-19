@@ -148,31 +148,3 @@ class MarkTriathlonRuns(Step):
             (df["type"] == "Run") & (prev_type == "Ride") & (gap_h <= self.max_gap_hours)
         ).astype(int)
         return df
-
-
-def default_pipeline(
-    detector=None, fast_run_filter: bool = True, hr_spike_filter: bool = False
-) -> Pipeline:
-    """Cleaning chain of the thesis' personalized model, plus data-quality steps from the error
-    analysis (``docs/RESULTS_BREAKDOWN.md``).
-
-    ``fast_run_filter`` (``RemoveImplausiblyFastRuns``) only drops a non-run, so the detected races
-    are unchanged. ``hr_spike_filter`` (``ValidateMaxHeartRate``) lowers inflated HRmax, which makes
-    the HR-based race detector find more races; it is off until those races are validated.
-    Both ``False`` reproduces the thesis chain exactly.
-    """
-    from race_predictor.processing.races import DetectRaces
-
-    extra = [RemoveImplausiblyFastRuns()] if fast_run_filter else []
-    extra += [ValidateMaxHeartRate()] if hr_spike_filter else []
-    return Pipeline(
-        [
-            RemoveAnomalies(),
-            *extra,
-            ValidateHeartRate(),
-            DropAthletesWithoutHR(),
-            EstimateHRMax(),
-            MarkTriathlonRuns(),
-            DetectRaces(detector),
-        ]
-    )

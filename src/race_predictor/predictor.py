@@ -20,7 +20,7 @@ from race_predictor.features import RaceDataset, build_query_dataset
 from race_predictor.models import ModeRouter, race_modes
 from race_predictor.models.base import RaceModel
 from race_predictor.models.baselines import riegel_time
-from race_predictor.processing import ImputeMissing, Pipeline, RemoveAnomalies, ValidateHeartRate
+from race_predictor.processing import cleaning_pipeline
 
 DISTANCES_M = {"5 km": 5000.0, "10 km": 10000.0, "Half marathon": 21097.5, "Marathon": 42195.0}
 PACE_BOUNDS_S_KM = (150.0, 900.0)  # predictions are clipped to a plausible 2:30-15:00 /km
@@ -34,9 +34,9 @@ def format_time(seconds: float) -> str:
 
 
 def prepare_activities(df: pd.DataFrame) -> pd.DataFrame:
-    """Clean one athlete's canonical activities (HR optional, unlike the thesis pipeline)."""
-    cleaned = Pipeline([RemoveAnomalies(), ValidateHeartRate(keep_missing=True), ImputeMissing()])
-    return cleaned.run(df.assign(max_hr=df["max_hr"], athlete=df["athlete"].astype(str)))
+    """Clean one athlete's canonical activities for prediction (same shared steps as training,
+    heart rate optional; see :mod:`race_predictor.processing.cleaning`)."""
+    return cleaning_pipeline("predict").run(df.assign(athlete=df["athlete"].astype(str)))
 
 
 class RacePredictor:
