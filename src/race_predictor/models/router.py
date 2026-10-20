@@ -2,13 +2,15 @@
 
 ``ModeRouter`` predicts each race with the model for its mode; every model is fitted on all
 races. With only road races left (see :class:`~race_predictor.domain.RaceMode`) it holds one
-model - Riegel with a learned correction, the most accurate on athletes the models had not seen
-(``docs/RESULTS_MODES.md``) - and is the place where future modes (e.g. trail) plug in.
+model - Riegel with a learned correction that knows whether Riegel's reference run was a race,
+the most accurate on athletes the models had not seen (``docs/RESULTS_MODES.md``) - and is the
+place where future modes (e.g. trail) plug in.
 """
 
 from __future__ import annotations
 
 from collections.abc import Callable, Mapping
+from functools import partial
 
 import numpy as np
 import pandas as pd
@@ -18,11 +20,13 @@ from race_predictor.features import RaceDataset
 from race_predictor.models.base import RaceModel
 from race_predictor.models.hybrid import RiegelCorrected
 
-DEFAULT_MODELS: dict[RaceMode, Callable[[], RaceModel]] = {RaceMode.ROAD: RiegelCorrected}
+DEFAULT_MODELS: dict[RaceMode, Callable[[], RaceModel]] = {
+    RaceMode.ROAD: partial(RiegelCorrected, use_reference_type=True)
+}
 
 
 def _label(factory) -> str:
-    return getattr(factory, "name", None) or getattr(factory, "__name__", "model")
+    return factory().name  # some models set their name per instance
 
 
 def race_modes(ds: RaceDataset) -> np.ndarray:

@@ -130,9 +130,9 @@ def test_mode_router_uses_the_model_for_the_mode(races):
     ds = build_race_dataset(races)
     router = ModeRouter().fit(ds)
     pred = router.predict(ds)
-    assert pred == pytest.approx(RiegelCorrected().fit(ds).predict(ds))
-    assert router.name == "Router(road=Riegel+correction)"
-    assert router.model_for(RaceMode.ROAD).name == "Riegel+correction"
+    assert pred == pytest.approx(RiegelCorrected(use_reference_type=True).fit(ds).predict(ds))
+    assert router.name == "Router(road=Riegel+correction+ref)"
+    assert router.model_for(RaceMode.ROAD).name == "Riegel+correction+ref"
     assert router.contributions(ds).sum(axis=1).to_numpy() == pytest.approx(pred)
     assert set(race_modes(ds)) == {RaceMode.ROAD}
     ridge = ModeRouter({RaceMode.ROAD: RidgeBaseline}).fit(ds).predict(ds)
@@ -159,6 +159,15 @@ def test_riegel_corrected_contributions(races):
     assert "(baseline)" in fallback and fallback.sum(axis=1).to_numpy() == pytest.approx(
         model.predict(no_ref)
     )
+
+
+def test_riegel_corrected_can_use_reference_type(races):
+    ds = build_race_dataset(races)
+    assert set(ds.static["riegel_ref_is_race"].dropna()) <= {0.0, 1.0}
+    plain, aware = RiegelCorrected(), RiegelCorrected(use_reference_type=True)
+    assert aware._x(ds).shape[1] == plain._x(ds).shape[1] + 1
+    assert (plain.name, aware.name) == ("Riegel+correction", "Riegel+correction+ref")
+    assert np.isfinite(aware.fit(ds).predict(ds)).all()
 
 
 def test_riegel_corrected_learns_systematic_slowdown(races):

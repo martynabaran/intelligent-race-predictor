@@ -1,7 +1,7 @@
 """Stage 10: which model for running races (the app's choice) - single models vs nested selection.
 
 Triathlon runs are no longer races (39 of 41 were brick sessions, `docs/REVIEW_RACES.md`), so
-there is one mode. The app uses Riegel+correction; `AutoRouter` picks the model inside every
+there is one mode. The app uses Riegel+correction+ref; `AutoRouter` picks the model inside every
 training fold (inner athlete-grouped CV), so its scores are a nested estimate of "choose the
 best model" without peeking at the test athletes.
 
@@ -50,7 +50,8 @@ def main() -> None:
         "Riegel": RiegelBaseline,
         "Ridge (previous app model)": RidgeBaseline,
         "HistGB": HistGradientBoostingBaseline,
-        "Riegel+correction (app)": RiegelCorrected,
+        "Riegel+correction": RiegelCorrected,
+        "Riegel+correction+ref (app)": lambda: RiegelCorrected(use_reference_type=True),
         "AutoRouter (nested selection)": RecordingAutoRouter,
     }
     rows = []
@@ -103,9 +104,11 @@ def main() -> None:
         "# Stage 10: model for running races\n\n"
         f"{len(ds)} running races of {ds.meta['athlete'].nunique()} athletes (runs after a ride "
         "are no longer races, see `REVIEW_RACES.md`). Metrics on total race time; `MedAPE` = "
-        "median absolute percentage error. The app uses Riegel+correction; `AutoRouter` re-selects the "
+        "median absolute percentage error. The app uses Riegel+correction+ref; `AutoRouter` re-selects "
+        "the "
         "model inside every training fold (inner grouped CV over Riegel, Ridge, HistGB, "
-        "Riegel+correction), so its scores are a nested estimate.\n\n"
+        "Riegel+correction with and without the reference type), so its scores are a nested "
+        "estimate.\n\n"
         + table.to_markdown(index=False)
         + "\n\n## By what Riegel projects from: a previous race or a training run\n\n"
         f"The reference is the athlete's fastest >=5 km run of the past year: a detected race "

@@ -31,7 +31,8 @@ pytest && ruff check .
 The app takes a Strava `activities.csv` or Garmin Connect CSV export and shows predicted 5 km / 10 km /
 half / marathon times with an 80 % range, a comparison with the Riegel formula, a form-over-time curve and
 an explanation of the prediction. It predicts **running races** (no triathlon runs, see below) with the Riegel
-formula times a correction learned from past races, the most accurate model on athletes it had not seen. Ranges are the empirical 10–90 % errors on such athletes
+formula times a correction learned from past races, which also knows whether the run Riegel projects from was a
+race or a training run. It was the most accurate model on athletes it had not seen. Ranges are the empirical 10–90 % errors on such athletes
 (about −7 % to +16 %). The models are evaluated on only 129 races of 12 athletes, so treat predictions as indicative.
 
 ### What was built
@@ -52,7 +53,8 @@ formula times a correction learned from past races, the most accurate model on a
 
 | Model | MAPE | median |
 |---|---|---|
-| **Riegel × learned correction (used by the app)** | **6.5 %** (nested selection: 6.7 %) | 5.0 % |
+| **Riegel × learned correction, aware of the reference type (used by the app)** | **6.1 %** (nested selection: 6.1 %) | 4.9 % |
+| Riegel × learned correction | 6.5 % | 5.0 % |
 | Riegel formula | 6.6 % | 4.6 % |
 | Ridge regression (previous app model) | 10.7 % | 8.5 % |
 | Gradient boosting | 14.8 % | 14.4 % |

@@ -25,21 +25,25 @@ def log_distance_ratio(ds: RaceDataset) -> np.ndarray:
 
 
 class RiegelCorrected(RaceModel):
-    name = "Riegel+correction"
+    """``use_reference_type`` adds whether Riegel's reference run was a race
+    (``riegel_ref_is_race``): Riegel errs far more when it projects a training run."""
 
-    def __init__(self, alpha: float = 1.0):
+    def __init__(self, alpha: float = 1.0, use_reference_type: bool = False):
         self.alpha = alpha
+        self.use_reference_type = use_reference_type
+        self.name = "Riegel+correction+ref" if use_reference_type else "Riegel+correction"
 
     def _x(self, ds: RaceDataset) -> np.ndarray:
         s = ds.static
         km = s["race_distance_m"].to_numpy() / 1000
-        return np.column_stack(
-            [
-                log_distance_ratio(ds),
-                s["is_triathlon"].to_numpy(float),
-                s["race_elevation_gain_m"].to_numpy(float) / km,
-            ]
-        )
+        cols = [
+            log_distance_ratio(ds),
+            s["is_triathlon"].to_numpy(float),
+            s["race_elevation_gain_m"].to_numpy(float) / km,
+        ]
+        if self.use_reference_type:
+            cols.append(s["riegel_ref_is_race"].to_numpy(float))
+        return np.column_stack(cols)
 
     def fit(self, ds: RaceDataset) -> RiegelCorrected:
         self.riegel_ = RiegelBaseline().fit(ds)

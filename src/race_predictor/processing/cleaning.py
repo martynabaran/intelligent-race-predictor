@@ -8,7 +8,9 @@ from :func:`cleaning_pipeline`: the shared steps are identical, and only what ha
 * ``train``: drop athletes without heart rate, then add ``hr_max``, ``is_triathlon``, ``is_race``
   (race detection needs heart rate). Runs after a ride are not races (``DropTriathlonRaces``)
   unless ``include_triathlon_races`` - only the error analysis needs them.
-* ``predict``: keep rows without heart rate (users may not wear a strap) and impute gaps.
+* ``predict``: keep rows without heart rate (users may not wear a strap), detect races with the
+  same detector (needed to know whether Riegel's reference run was a race) and impute gaps after
+  detection, so imputed heart rates never count as race efforts.
 """
 
 from __future__ import annotations
@@ -55,24 +57,22 @@ def cleaning_pipeline(
     are unchanged. ``hr_spike_filter`` (``ValidateMaxHeartRate``) lowers inflated HRmax, which makes
     the HR-based race detector find more races; it is off until those races are validated.
     """
-    shared = shared_steps(fast_run_filter, hr_spike_filter)
-    if purpose == "predict":
-        return Pipeline([*shared, ValidateHeartRate(keep_missing=True), ImputeMissing()])
-    if purpose != "train":
+    if purpose not in ("train", "predict"):
         raise ValueError("purpose must be 'train' or 'predict'")
     from race_predictor.processing.races import DetectRaces
 
-    return Pipeline(
-        [
-            *shared,
-            ValidateHeartRate(),
-            DropAthletesWithoutHR(),
-            EstimateHRMax(),
-            MarkTriathlonRuns(),
-            DetectRaces(detector),
-            *([] if include_triathlon_races else [DropTriathlonRaces()]),
-        ]
-    )
+    labelling = [
+        EstimateHRMax(),
+        MarkTriathlonRuns(),
+        DetectRaces(detector),
+        *([] if include_triathlon_races else [DropTriathlonRaces()]),
+    ]
+    shared = shared_steps(fast_run_filter, hr_spike_filter)
+    if purpose == "predict":
+        return Pipeline(
+            [*shared, ValidateHeartRate(keep_missing=True), *labelling, ImputeMissing()]
+        )
+    return Pipeline([*shared, ValidateHeartRate(), DropAthletesWithoutHR(), *labelling])
 
 
 def default_pipeline(

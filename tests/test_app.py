@@ -101,7 +101,7 @@ def test_predictor_end_to_end(frame):
 
     query = build_query_dataset(prepare_activities(slow), [10000.0])
     contrib = predictor.explain(slow, 10000.0)  # road race -> Riegel + learned correction
-    assert predictor.model_name() == "Riegel+correction" and "best_run_pace" in contrib.index
+    assert predictor.model_name() == "Riegel+correction+ref" and "best_run_pace" in contrib.index
     assert contrib.sum() == pytest.approx(predictor._pace(query)[0], rel=1e-6)
     ref = predictor.reference_run(slow)
     assert ref["pace_s_km"] == pytest.approx(contrib["best_run_pace"])
@@ -113,6 +113,33 @@ def test_predictor_rejects_short_history(frame):
     predictor = RacePredictor(n_splits=3).fit(build_race_dataset(synthetic_training(frame)))
     with pytest.raises(DataValidationError):
         predictor.predict(make_athlete(frame, n=2))
+
+
+def test_prediction_knows_whether_reference_run_was_a_race(frame):
+    predictor = RacePredictor(n_splits=3).fit(build_race_dataset(synthetic_training(frame)))
+    easy = make_athlete(frame)  # steady training, no race efforts
+    raced = pd.concat(
+        [
+            easy,
+            frame(
+                [
+                    dict(
+                        athlete="u",
+                        date=pd.Timestamp("2024-06-01"),
+                        distance_m=10000.0,
+                        avg_speed_ms=3.6,
+                        moving_s=10000 / 3.6,
+                        avg_hr=175.0,
+                    )
+                ]
+            ),
+        ],
+        ignore_index=True,
+    )
+    assert not prepare_activities(easy)["is_race"].any()
+    assert prepare_activities(raced)["is_race"].sum() == 1  # detected in the user's own export
+    assert predictor.reference_run(easy)["is_race"] is False
+    assert predictor.reference_run(raced)["is_race"] is True
 
 
 def test_prepare_activities_keeps_rows_without_heart_rate(frame):
@@ -175,7 +202,8 @@ def test_prediction_contract(frame):
     athlete = make_athlete(frame)
     items = p.predictions(athlete)
     assert all(isinstance(i, Prediction) for i in items) and len(items) == 4
-    assert items[0].mode is RaceMode.ROAD and items[0].model == "Riegel+correction"
+    assert items[0].mode is RaceMode.ROAD and items[0].model == "Riegel+correction+ref"
     table = p.predict(athlete)
     assert list(table.columns) == PREDICTION_COLUMNS
-    assert table["mode"].eq(RaceMode.ROAD).all() and table["model"].eq("Riegel+correction").all()
+    assert table["mode"].eq(RaceMode.ROAD).all()
+    assert table["model"].eq("Riegel+correction+ref").all()

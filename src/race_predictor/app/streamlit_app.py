@@ -21,6 +21,7 @@ DATA_DIR = Path(os.environ.get("RACE_PREDICTOR_DATA", "data"))
 MODEL_LABELS = {
     "Riegel": "the Riegel formula",
     "Riegel+correction": "the Riegel formula with a learned correction",
+    "Riegel+correction+ref": "the Riegel formula with a learned correction",
     "Ridge": "ridge regression",
 }
 
@@ -50,9 +51,11 @@ def explain_riegel(predictor, activities, contrib, label: str) -> None:
     km = DISTANCES_M[label] / 1000
     riegel = (contrib["best_run_pace"] + contrib.get("riegel_distance_adjustment", 0.0)) * km
     correction = contrib.get("model_correction", 0.0) * km
+    kind = "a race" if ref["is_race"] else "a training run, not a race"
     st.markdown(
         f"Your fastest run of 5 km or more in the last year: **{ref['distance_m'] / 1000:.1f} km "
-        f"in {format_time(ref['time_s'])}** ({format_time(ref['pace_s_km'])} per km).\n\n"
+        f"in {format_time(ref['time_s'])}** ({format_time(ref['pace_s_km'])} per km) - "
+        f"{kind}.\n\n"
         f"- Riegel formula, T2 = T1·(D2/D1)^1.06, projects it to {label}: "
         f"**{format_time(riegel)}**\n"
         f"- Learned correction: **{'+' if correction >= 0 else '−'}"
@@ -61,8 +64,9 @@ def explain_riegel(predictor, activities, contrib, label: str) -> None:
     )
     st.caption(
         "The correction is learned from past races: Riegel tends to be optimistic for long "
-        "races and when your fastest run was a training run rather than a race. On athletes it "
-        "had not seen, this was the most accurate model (median error ~5%)."
+        "races and when it projects a training run rather than a race result, and the model "
+        "knows which one yours is. On athletes it had not seen, this was the most accurate "
+        "model (median error ~5%)."
     )
 
 
