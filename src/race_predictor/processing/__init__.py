@@ -1,3 +1,4 @@
+from race_predictor.processing.cleaning import cleaning_pipeline, default_pipeline, shared_steps
 from race_predictor.processing.pipeline import (
     DropAthletesWithoutHR,
     EstimateHRMax,
@@ -9,7 +10,6 @@ from race_predictor.processing.pipeline import (
     Step,
     ValidateHeartRate,
     ValidateMaxHeartRate,
-    default_pipeline,
 )
 from race_predictor.processing.races import (
     DetectRaces,
@@ -33,7 +33,9 @@ __all__ = [
     "Step",
     "ValidateHeartRate",
     "ValidateMaxHeartRate",
+    "cleaning_pipeline",
     "default_pipeline",
     "distance_label",
+    "shared_steps",
     "training_windows",
 ]

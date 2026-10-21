@@ -13,6 +13,7 @@ from race_predictor.processing import (
     StandardDistanceDetector,
     ValidateHeartRate,
     ValidateMaxHeartRate,
+    cleaning_pipeline,
     default_pipeline,
     distance_label,
     training_windows,
@@ -75,6 +76,37 @@ def test_default_pipeline_switches():
     assert "ValidateMaxHeartRate" in names(default_pipeline(hr_spike_filter=True))
     thesis = names(default_pipeline(fast_run_filter=False))
     assert "RemoveImplausiblyFastRuns" not in thesis and len(thesis) == 6
+
+
+def test_train_and_predict_share_the_cleaning_steps():
+    def names(p):
+        return [type(s).__name__ for s in p.steps]
+
+    train, predict = names(cleaning_pipeline("train")), names(cleaning_pipeline("predict"))
+    shared = ["RemoveAnomalies", "RemoveImplausiblyFastRuns"]
+    assert train[:2] == shared and predict[:2] == shared
+    assert names(default_pipeline()) == train
+    with_spikes = names(cleaning_pipeline("predict", hr_spike_filter=True))
+    assert "ValidateMaxHeartRate" in with_spikes
+    with pytest.raises(ValueError):
+        cleaning_pipeline("serve")
+
+
+def test_predict_cleaning_drops_ride_but_keeps_runs_without_hr(frame, days):
+    nan = float("nan")
+    df = frame(
+        [
+            *(
+                {"date": days(i), "avg_speed_ms": 3.0, "avg_hr": nan, "max_hr": nan}
+                for i in range(5)
+            ),
+            {"date": days(5), "avg_speed_ms": 3.1},  # a normal run with heart rate
+            {"date": days(6), "avg_speed_ms": 6.3},  # a ride logged as a run
+        ]
+    )
+    out = cleaning_pipeline("predict").run(df)
+    assert len(out) == 6 and out["avg_hr"].notna().all()  # kept and imputed, not dropped
+    assert 6.3 not in out["avg_speed_ms"].to_list()
 
 
 def test_drop_athletes_without_hr(frame, days):

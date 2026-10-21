@@ -168,7 +168,7 @@ def _years_of_experience(runs: pd.DataFrame) -> float:
 
 
 def build_race_dataset(df: pd.DataFrame, days_window: int = 365, min_runs: int = 3) -> RaceDataset:
-    """``df`` must come from :func:`race_predictor.processing.default_pipeline`."""
+    """``df`` must come from ``cleaning_pipeline("train")`` (:mod:`race_predictor.processing`)."""
     df = df.sort_values(["athlete", "date"]).reset_index(drop=True)
     seqs, statics, ys, metas = [], [], [], []
 
