@@ -6,6 +6,7 @@ from race_predictor.training_load.banister import (
     fit_banister,
     rolling_forecast,
 )
+from race_predictor.training_load.features import LOAD_FEATURES, load_features
 from race_predictor.training_load.performance import equivalent_speed
 from race_predictor.training_load.state import (
     ATL_DAYS,
@@ -30,11 +31,13 @@ __all__ = [
     "BanisterParams",
     "CTL_DAYS",
     "DEFAULT_HR_REST",
+    "LOAD_FEATURES",
     "TYPICAL_HRR",
     "WARMUP_DAYS",
     "activity_trimp",
     "equivalent_speed",
     "fit_banister",
+    "load_features",
     "load_state",
     "load_states",
     "rolling_forecast",
