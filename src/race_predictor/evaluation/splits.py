@@ -16,15 +16,19 @@ from sklearn.model_selection import GroupKFold
 from race_predictor.features import RaceDataset
 
 
-def chronological_split(ds: RaceDataset, test_fraction: float = 0.2):
+def chronological_split(
+    ds: RaceDataset, test_fraction: float = 0.2
+) -> tuple[np.ndarray, np.ndarray]:
+    """Return ``(train_index, test_index)``: each athlete's latest ``test_fraction`` of races."""
     test = np.zeros(len(ds), dtype=bool)
-    for _, idx in ds.meta.groupby("athlete").groups.items():
-        order = ds.meta.loc[idx].sort_values("race_date").index.to_numpy()
+    for athlete_rows in ds.meta.groupby("athlete").groups.values():
+        order = ds.meta.loc[athlete_rows].sort_values("race_date").index.to_numpy()
         test[order[len(order) - max(1, int(len(order) * test_fraction)) :]] = True
     return np.flatnonzero(~test), np.flatnonzero(test)
 
 
 def grouped_splits(ds: RaceDataset, n_splits: int = 5) -> Iterator[tuple[np.ndarray, np.ndarray]]:
+    """Yield ``(train_index, test_index)`` folds that keep each athlete in a single fold."""
     groups = ds.meta["athlete"].to_numpy()
     n_splits = min(n_splits, len(set(groups)))
     yield from GroupKFold(n_splits=n_splits).split(np.zeros(len(ds)), groups=groups)

@@ -18,8 +18,8 @@ from race_predictor.services.prediction import (
 
 __all__ = [
     "DISTANCES_M",
-    "LoadSummary",
     "PREDICTION_COLUMNS",
+    "LoadSummary",
     "Prediction",
     "RacePredictor",
     "available_sources",

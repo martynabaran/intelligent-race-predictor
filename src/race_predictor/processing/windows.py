@@ -6,6 +6,8 @@ from collections.abc import Iterator
 
 import pandas as pd
 
+from race_predictor.domain import ActivityType
+
 
 def training_windows(
     df: pd.DataFrame, days_window: int = 365, min_runs: int = 3
@@ -16,7 +18,7 @@ def training_windows(
     same athlete – strictly before the race, so no information from the race itself leaks in.
     Races with fewer than ``min_runs`` preceding runs are skipped.
     """
-    runs = df[df["type"] == "Run"].sort_values("date")
+    runs = df[df["type"] == ActivityType.RUN].sort_values("date")
     for _, athlete_runs in runs.groupby("athlete"):
         for _, race in athlete_runs[athlete_runs["is_race"]].iterrows():
             start = race["date"] - pd.Timedelta(days=days_window)

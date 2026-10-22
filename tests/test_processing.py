@@ -170,7 +170,7 @@ def test_heuristic_detector_flags_hard_standard_distance(frame, days):
         for i in range(0, 60, 3)
     ]
     race = {"date": days(61), "distance_m": 10000.0, "avg_hr": 175.0, "avg_speed_ms": 3.6}
-    df = EstimateHRMax().apply(frame(easy + [race]))
+    df = EstimateHRMax().apply(frame([*easy, race]))
     flags = HeuristicRaceDetector().detect(df)
     assert flags.iloc[-1] and not flags.iloc[:-1].any()
 

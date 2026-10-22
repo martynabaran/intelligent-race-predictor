@@ -12,8 +12,10 @@ python experiments/run_modes.py
 import argparse
 from collections import Counter
 from pathlib import Path
+from typing import ClassVar
 
 import pandas as pd
+from typing_extensions import override
 
 from race_predictor.domain import RaceMode
 from race_predictor.evaluation.breakdown import breakdown
@@ -33,8 +35,9 @@ SEGMENTS = ["all"]
 class RecordingAutoRouter(AutoModeRouter):
     """Remembers which model every outer fold chose, for the report."""
 
-    choices: list[dict] = []
+    choices: ClassVar[list[dict]] = []
 
+    @override
     def fit(self, ds):
         super().fit(ds)
         RecordingAutoRouter.choices.append({m.value: n for m, n in self.chosen_.items()})

@@ -12,9 +12,9 @@ from __future__ import annotations
 import math
 from dataclasses import dataclass
 
+from race_predictor.domain import MARATHON_M
 from race_predictor.exceptions import DataValidationError
 
-MARATHON_M = 42_195.0
 #: Fractions of VO2max: (slow end, fast end) of each zone.
 ZONE_INTENSITY = {
     "easy": (0.59, 0.74),
@@ -60,8 +60,9 @@ def vdot(distance_m: float, time_s: float) -> float:
 
 def velocity_at(vo2: float) -> float:
     """Running velocity (m/min) whose oxygen cost is ``vo2`` (inverse of :func:`oxygen_cost`)."""
-    a, b, c = 0.000104, 0.182258, -4.60 - vo2
-    return (-b + math.sqrt(b * b - 4 * a * c)) / (2 * a)
+    quadratic, linear, constant = 0.000104, 0.182258, -4.60 - vo2
+    discriminant = linear * linear - 4 * quadratic * constant
+    return (-linear + math.sqrt(discriminant)) / (2 * quadratic)
 
 
 def pace_at(vdot_value: float, fraction: float) -> float:
@@ -70,8 +71,10 @@ def pace_at(vdot_value: float, fraction: float) -> float:
 
 
 def equivalent_time(vdot_value: float, distance_m: float) -> float:
-    """Time (s) a runner with ``vdot_value`` needs for ``distance_m`` (VDOT is monotone in time,
-    so this inverts :func:`vdot` by bisection)."""
+    """Return the time (s) a runner with ``vdot_value`` needs for ``distance_m``.
+
+    VDOT is monotone in time, so this inverts :func:`vdot` by bisection.
+    """
     low, high = 60.0, 100 * 3600.0
     for _ in range(80):
         middle = (low + high) / 2

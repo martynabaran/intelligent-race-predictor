@@ -26,26 +26,26 @@ def races(frame):
         start = pd.Timestamp("2023-01-01")
         for i in range(30):
             rows.append(
-                dict(
-                    athlete=a,
-                    date=start + pd.Timedelta(days=7 * i),
-                    distance_m=8000.0,
-                    avg_speed_ms=speed,
-                    is_race=False,
-                    is_triathlon=0,
-                )
+                {
+                    "athlete": a,
+                    "date": start + pd.Timedelta(days=7 * i),
+                    "distance_m": 8000.0,
+                    "avg_speed_ms": speed,
+                    "is_race": False,
+                    "is_triathlon": 0,
+                }
             )
         for j in range(4):
             rows.append(
-                dict(
-                    athlete=a,
-                    date=start + pd.Timedelta(days=215 + 28 * j),
-                    distance_m=10000.0,
-                    avg_speed_ms=speed * 1.1,
-                    moving_s=10000 / (speed * 1.1),
-                    is_race=True,
-                    is_triathlon=0,
-                )
+                {
+                    "athlete": a,
+                    "date": start + pd.Timedelta(days=215 + 28 * j),
+                    "distance_m": 10000.0,
+                    "avg_speed_ms": speed * 1.1,
+                    "moving_s": 10000 / (speed * 1.1),
+                    "is_race": True,
+                    "is_triathlon": 0,
+                }
             )
     return frame(rows)
 
@@ -185,3 +185,54 @@ def test_auto_router_picks_from_inner_cv(races):
         auto.scores_[RaceMode.ROAD], key=auto.scores_[RaceMode.ROAD].get
     )
     assert np.isfinite(auto.predict(ds)).all()
+
+
+# ----- guards added in the code-quality pass ---------------------------------------------------
+
+
+def test_building_a_dataset_without_races_is_an_error(frame, days):
+    from race_predictor.exceptions import DataValidationError
+
+    no_races = frame([{"date": days(i), "is_race": False, "is_triathlon": 0} for i in range(6)])
+    with pytest.raises(DataValidationError, match="no race has"):
+        build_race_dataset(no_races)
+
+
+def test_selecting_models_on_an_empty_dataset_is_an_error(races):
+    from race_predictor.evaluation.modes import AutoModeRouter
+    from race_predictor.exceptions import DataValidationError
+
+    empty = build_race_dataset(races).subset([])
+    with pytest.raises(DataValidationError, match="no races"):
+        AutoModeRouter().fit(empty)
+
+
+def test_models_without_exact_contributions_say_so(races):
+    from race_predictor.models.base import RaceModel
+
+    class Constant(RaceModel):
+        name = "constant"
+
+        def fit(self, ds):
+            return self
+
+        def predict(self, ds):
+            return np.zeros(len(ds))
+
+    with pytest.raises(NotImplementedError, match="Constant has no exact contributions"):
+        Constant().contributions(build_race_dataset(races))
+
+
+def test_subset_accepts_a_boolean_mask_like_the_matching_positions(races):
+    ds = build_race_dataset(races)
+    mask = np.zeros(len(ds), dtype=bool)
+    mask[[2, 5, 7]] = True
+    by_mask, by_position = ds.subset(mask), ds.subset([2, 5, 7])
+    assert all(np.array_equal(a, b) for a, b in zip(by_mask.seqs, by_position.seqs, strict=True))
+    pd.testing.assert_frame_equal(by_mask.static, by_position.static)
+    assert np.array_equal(by_mask.y, by_position.y)
+
+
+def test_subset_of_nothing_is_an_empty_dataset(races):
+    empty = build_race_dataset(races).subset([])
+    assert len(empty) == 0 and empty.seqs == []

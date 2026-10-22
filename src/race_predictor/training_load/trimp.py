@@ -13,6 +13,8 @@ assumed load. Those typical intensities (:data:`TYPICAL_HRR`) are assumptions, n
 
 from __future__ import annotations
 
+from typing import Any
+
 import numpy as np
 import pandas as pd
 
@@ -21,17 +23,17 @@ from race_predictor.domain import ActivityType
 BANISTER_B = 1.92
 DEFAULT_HR_REST = 60.0
 #: Typical heart-rate-reserve fraction per activity type, used when heart rate is missing.
-TYPICAL_HRR = {
-    ActivityType.RUN.value: 0.65,
-    ActivityType.RIDE.value: 0.55,
-    ActivityType.SWIM.value: 0.60,
-    ActivityType.WEIGHT_TRAINING.value: 0.40,
-    ActivityType.WORKOUT.value: 0.50,
+TYPICAL_HRR: dict[str, float] = {
+    ActivityType.RUN: 0.65,
+    ActivityType.RIDE: 0.55,
+    ActivityType.SWIM: 0.60,
+    ActivityType.WEIGHT_TRAINING: 0.40,
+    ActivityType.WORKOUT: 0.50,
 }
 _FALLBACK_HRR = 0.50
 
 
-def trimp_per_minute(hrr: np.ndarray | pd.Series, b: float = BANISTER_B):
+def trimp_per_minute(hrr: np.ndarray | pd.Series, b: float = BANISTER_B) -> Any:
     """Banister load of one minute at heart-rate-reserve fraction ``hrr`` (vectorised)."""
     return hrr * 0.64 * np.exp(b * hrr)
 

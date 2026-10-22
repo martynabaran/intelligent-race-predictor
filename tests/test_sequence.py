@@ -6,14 +6,14 @@ from race_predictor.features import build_race_dataset
 
 pytest.importorskip("tensorflow")
 
-from race_predictor.evaluation.explain import (  # noqa: E402
+from race_predictor.evaluation.explain import (
     attribution_by_channel,
     attribution_by_period,
     integrated_gradients,
     shap_tabular,
 )
-from race_predictor.models import HistGradientBoostingBaseline  # noqa: E402
-from race_predictor.models.sequence import SequenceModel  # noqa: E402
+from race_predictor.models import HistGradientBoostingBaseline
+from race_predictor.models.sequence import SequenceModel
 
 
 @pytest.fixture
@@ -22,25 +22,25 @@ def ds(frame):
     for a, speed in zip("abc", (3.0, 3.5, 4.0), strict=True):
         for i in range(14):
             rows.append(
-                dict(
-                    athlete=a,
-                    date=pd.Timestamp("2023-01-01") + pd.Timedelta(days=7 * i),
-                    avg_speed_ms=speed,
-                    is_race=False,
-                    is_triathlon=0,
-                )
+                {
+                    "athlete": a,
+                    "date": pd.Timestamp("2023-01-01") + pd.Timedelta(days=7 * i),
+                    "avg_speed_ms": speed,
+                    "is_race": False,
+                    "is_triathlon": 0,
+                }
             )
         for j in range(3):
             rows.append(
-                dict(
-                    athlete=a,
-                    date=pd.Timestamp("2023-04-20") + pd.Timedelta(days=14 * j),
-                    distance_m=10000.0,
-                    avg_speed_ms=speed * 1.1,
-                    moving_s=10000 / (speed * 1.1),
-                    is_race=True,
-                    is_triathlon=0,
-                )
+                {
+                    "athlete": a,
+                    "date": pd.Timestamp("2023-04-20") + pd.Timedelta(days=14 * j),
+                    "distance_m": 10000.0,
+                    "avg_speed_ms": speed * 1.1,
+                    "moving_s": 10000 / (speed * 1.1),
+                    "is_race": True,
+                    "is_triathlon": 0,
+                }
             )
     return build_race_dataset(frame(rows))
 

@@ -15,6 +15,7 @@ DATASETS = {
 
 
 def main() -> None:
+    """Download the selected datasets (all by default) into ``--out``."""
     ap = argparse.ArgumentParser()
     ap.add_argument("--only", choices=DATASETS, action="append", help="dataset(s) to fetch")
     ap.add_argument("--out", type=Path, default=Path("data/kaggle"))

@@ -4,7 +4,7 @@ import pandas as pd
 import pytest
 
 pytest.importorskip("streamlit")
-from streamlit.testing.v1 import AppTest  # noqa: E402
+from streamlit.testing.v1 import AppTest
 
 ROOT = Path(__file__).parent.parent
 PAGE = ROOT / "src" / "race_predictor" / "app" / "pages" / "1_Training_load.py"

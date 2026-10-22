@@ -7,9 +7,11 @@ the mean far above the typical error.
 from __future__ import annotations
 
 import numpy as np
+from numpy.typing import ArrayLike
 
 
-def evaluate(y_true, y_pred) -> dict[str, float]:
+def evaluate(y_true: ArrayLike, y_pred: ArrayLike) -> dict[str, float]:
+    """Return MAE, RMSE, NRMSE, MAPE and median APE (percentages in ``*_pct``) of a prediction."""
     y_true, y_pred = np.asarray(y_true, float), np.asarray(y_pred, float)
     err = y_pred - y_true
     rmse = float(np.sqrt(np.mean(err**2)))

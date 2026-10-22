@@ -10,6 +10,8 @@ from dataclasses import dataclass
 
 @dataclass
 class Timing:
+    """Result of :func:`timer`: ``seconds`` is filled in when the block exits."""
+
     label: str
     seconds: float = 0.0
 

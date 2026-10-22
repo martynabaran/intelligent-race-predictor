@@ -5,3 +5,10 @@ __pycache__/
 .ruff_cache/
 data/kaggle/
 /models/
+.mypy_cache/
+.coverage
+htmlcov/
+.DS_Store
+.claude/
+.idea/
+.vscode/

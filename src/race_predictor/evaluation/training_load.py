@@ -11,15 +11,13 @@ Two questions, both answered out-of-sample:
 
 from __future__ import annotations
 
-from collections.abc import Callable
-
 import numpy as np
 import pandas as pd
 
+from race_predictor.domain import ActivityType
 from race_predictor.evaluation.breakdown import breakdown
-from race_predictor.evaluation.runner import protocol_predictions
+from race_predictor.evaluation.runner import ModelFactory, protocol_predictions
 from race_predictor.features import RaceDataset
-from race_predictor.models.base import RaceModel
 from race_predictor.training_load import (
     equivalent_speed,
     fit_banister,
@@ -27,8 +25,6 @@ from race_predictor.training_load import (
     rolling_forecast,
 )
 from race_predictor.training_load.banister import MIN_RACES_FIXED_TAUS, TAU1_BOUNDS, TAU2_BOUNDS
-
-ModelFactory = Callable[[], RaceModel]
 
 
 def load_feature_comparison(
@@ -44,7 +40,10 @@ def load_feature_comparison(
     """
     rows: list[pd.DataFrame] = []
     predictions: dict[tuple[str, str], tuple[np.ndarray, np.ndarray, np.ndarray]] = {}
-    variants = {"without load": ds.with_load(False), "with load": ds.with_load(True)}
+    variants = {
+        "without load": ds.with_load(enabled=False),
+        "with load": ds.with_load(enabled=True),
+    }
     for name, make in factories.items():
         per_variant: dict[str, dict[str, tuple[np.ndarray, np.ndarray]]] = {}
         for variant, data in variants.items():
@@ -54,9 +53,12 @@ def load_feature_comparison(
                 )
                 per_variant.setdefault(protocol, {})[variant] = (pred, index)
         for protocol, pair in per_variant.items():
-            (p0, i0), (p1, i1) = pair["without load"], pair["with load"]
-            assert (i0 == i1).all(), "both variants must be scored on the same races"
-            predictions[(name, protocol)] = (p0, p1, i0)
+            (pred_without, index_without), (pred_with, index_with) = (
+                pair["without load"],
+                pair["with load"],
+            )
+            assert (index_without == index_with).all(), "both variants must score the same races"
+            predictions[(name, protocol)] = (pred_without, pred_with, index_without)
     return pd.concat(rows, ignore_index=True), predictions
 
 
@@ -76,7 +78,10 @@ def paired_ape_difference(
 
     Args:
         ds: The dataset the predictions refer to.
-        pred_without / pred_with: Predicted paces for the races in ``index``.
+        pred_without: Predicted paces without load features for the races in ``index``.
+        pred_with: Predicted paces for the races in ``index``.
+        n_boot: Number of bootstrap resamples of the athletes.
+        seed: Seed of the bootstrap random generator.
         index: Positions of the scored races in ``ds``.
         segment: Optional boolean mask over ``ds`` restricting the comparison (e.g. stand-alone).
     """
@@ -87,12 +92,12 @@ def paired_ape_difference(
     keep = np.ones(len(index), dtype=bool) if segment is None else segment[index]
     diff, athletes = (ape_with - ape_without)[keep], athletes[keep]
 
-    groups = [diff[athletes == a] for a in np.unique(athletes)]
+    groups = [diff[athletes == athlete] for athlete in np.unique(athletes)]
     rng = np.random.default_rng(seed)
     means = []
     for _ in range(n_boot):
-        pick = rng.integers(0, len(groups), len(groups))
-        sample = np.concatenate([groups[i] for i in pick])
+        picked = rng.integers(0, len(groups), len(groups))
+        sample = np.concatenate([groups[i] for i in picked])
         means.append(sample.mean())
     low, high = np.percentile(means, [2.5, 97.5])
     return {
@@ -105,6 +110,7 @@ def paired_ape_difference(
 
 
 def _mape(forecast: np.ndarray, actual: np.ndarray) -> float:
+    """Mean absolute percentage error (%) of ``forecast`` against ``actual``."""
     return float(np.mean(np.abs(forecast - actual) / actual) * 100)
 
 
@@ -126,7 +132,7 @@ def banister_report(
     """
     rows = []
     for athlete, group in cleaned.groupby("athlete"):
-        races = group[group["is_race"] & (group["type"] == "Run")]
+        races = group[group["is_race"] & (group["type"] == ActivityType.RUN)]
         time = races["moving_s"].fillna(races["elapsed_s"])
         speed = pd.Series(
             equivalent_speed(races["distance_m"].to_numpy(), time.to_numpy()),

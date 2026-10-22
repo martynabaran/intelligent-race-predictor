@@ -2,9 +2,8 @@
 
 Columns: athlete, datetime, distance [km], duration [min], gender, age_group, country, major
 (comma-separated list of majors the athlete ran). Logic ported from
-``notebooks/marathon_model.ipynb``.
-The files are large (10.7 M rows), so they are streamed in chunks and reduced to athletes who ran
-a 2019/2020 major.
+``notebooks/marathon_model.ipynb``. The files are large (10.7 M rows), so they are streamed in
+chunks and reduced to athletes who ran a 2019/2020 major.
 """
 
 from __future__ import annotations
@@ -42,7 +41,9 @@ def iter_kaggle_chunks(directory: str | Path, chunksize: int = 1_000_000) -> Ite
         path = directory / name
         if not path.exists():
             raise DataValidationError(f"{path} not found - run scripts/download_kaggle.py")
-        for chunk in pd.read_csv(path, usecols=lambda c: c in _COLUMNS, chunksize=chunksize):
+        for chunk in pd.read_csv(
+            path, usecols=lambda column: column in _COLUMNS, chunksize=chunksize
+        ):
             chunk = chunk[chunk["major"].str.contains("2019|2020", na=False)].copy()
             chunk["athlete"] = chunk["athlete"] + offset
             yield chunk
@@ -50,5 +51,6 @@ def iter_kaggle_chunks(directory: str | Path, chunksize: int = 1_000_000) -> Ite
 
 
 def load_marathon_activities(directory: str | Path, chunksize: int = 1_000_000) -> pd.DataFrame:
+    """Load all marathon-athlete rows of the Kaggle files into one DataFrame."""
     frames = list(iter_kaggle_chunks(directory, chunksize))
     return pd.concat(frames, ignore_index=True) if frames else pd.DataFrame(columns=_COLUMNS)

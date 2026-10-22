@@ -25,7 +25,14 @@ pip install -e ".[dev,app]"          # + ".[deep]" for TensorFlow models, ".[kag
 race-predictor predict "data/garmin_activities/Activities Jola.csv"   # CLI
 race-predictor app                                                    # web app (Streamlit)
 race-predictor evaluate                                               # baseline comparison
-pytest && ruff check .
+```
+
+Development checks (the same four run in CI, on Python 3.12):
+
+```bash
+ruff check . && ruff format --check .    # lint (incl. docstrings, naming, pathlib, ...) and formatting
+mypy                                     # strict-ish typing of src/ (untyped defs are rejected)
+pytest                                   # tests, including the layering test of the package
 ```
 
 The app takes a Strava `activities.csv` or Garmin Connect CSV export and shows predicted 5 km / 10 km /
@@ -33,7 +40,7 @@ half / marathon times with an 80 % range, a comparison with the Riegel formula, 
 an explanation of the prediction. It predicts **running races** (no triathlon runs, see below) with the Riegel
 formula times a correction learned from past races, which also knows whether the run Riegel projects from was a
 race or a training run. It was the most accurate model on athletes it had not seen. Ranges are the empirical 10–90 % errors on such athletes
-(about −7 % to +16 %). The models are evaluated on only 129 races of 12 athletes, so treat predictions as indicative.
+(about −9 % to +13 %). The models are evaluated on only 125 races of 13 athletes, so treat predictions as indicative.
 
 ### What was built
 
@@ -85,18 +92,27 @@ Methodological notes (grouped CV by athlete, nested tuning, seed variance) are i
 ## 📁 Repository Structure
 
 ```text
-Race_Performance_Predictor/
-│
-├── data/
-│   ├── strava_activities/         # Exports from the Strava platform
-│   └── garmin_activities/         # Exports from Garmin Connect
-│
-├── notebooks/
-│   ├── marathon_model.ipynb       # Notebook for the general model
-│   └── personalized_model.ipynb   # Notebook for the personalized model
-│
-├── Race_Performance_Predictor.pdf # Full thesis (PDF)
-└── README.md                      # This file
+.
+├── src/race_predictor/        # the package; layers listed bottom to top, each imports only from layers above it
+│   ├── domain/                #   Activity, Athlete, Race, Goal: plain typed dataclasses
+│   ├── sources/               #   Strava / Garmin / Kaggle readers behind one interface
+│   ├── planning/              #   pace zones and goal feasibility (plain numbers, no models)
+│   ├── processing/            #   cleaning pipeline, race detection, hand-labelled races
+│   ├── training_load/         #   TRIMP, fitness / fatigue / form, Banister model
+│   ├── features/              #   one training example per race
+│   ├── models/                #   Riegel, ridge, boosting, GRU / TCN / Transformer, transfer, distillation, TFLite
+│   ├── evaluation/            #   metrics, splits, tuning, explanations, result tables
+│   ├── services/              #   the only API the user interfaces use
+│   ├── app/                   #   Streamlit app (main page + Training load page)
+│   └── cli.py                 #   the `race-predictor` command
+├── tests/                     # pytest suite, including tests/test_architecture.py (layering rules)
+├── experiments/               # scripts that regenerate docs/RESULTS_*.md
+├── scripts/                   # data download helper
+├── docs/                      # extension plan, result reports, race review
+├── data/                      # sample exports (anonymised) and the reviewed race labels
+├── notebooks/, workshops/     # the original thesis and workshop notebooks (unchanged)
+├── Race_Performance_Predictor.pdf   # full thesis
+└── pyproject.toml             # dependencies and the ruff / mypy / pytest configuration
 ```
 
 ---
@@ -121,16 +137,10 @@ Race_Performance_Predictor/
 
 ## 🛠️ Technical Requirements
 
-```bash
-Python 3.8+
-```
-
-**Main libraries:**
-
-* TensorFlow / Keras
-* scikit-learn
-* pandas, numpy
-* matplotlib, seaborn
+* **Package, app and CLI:** Python 3.11+, installed with `pip install -e ".[dev,app]"`. Core libraries:
+  pandas, numpy, scikit-learn, scipy, optuna, typer. Optional extras: `app` (Streamlit, plotly), `deep`
+  (TensorFlow / Keras, SHAP, matplotlib), `lightgbm`, `kaggle` (see `pyproject.toml`).
+* **Original notebooks (thesis):** Python 3.8+, TensorFlow / Keras, scikit-learn, pandas, numpy, matplotlib, seaborn.
 
 ---
 

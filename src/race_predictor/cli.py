@@ -51,10 +51,11 @@ def predict(
         raise typer.Exit(1) from e
 
     typer.echo(f"{'Distance':<15}{'Predicted':>10}{'Range (80%)':>22}{'Riegel':>10}")
-    for r in table.itertuples():
-        rng = f"{format_time(r.low_s)} - {format_time(r.high_s)}"
+    for row in table.to_dict("records"):
+        rng = f"{format_time(row['low_s'])} - {format_time(row['high_s'])}"
         typer.echo(
-            f"{r.distance:<15}{format_time(r.time_s):>10}{rng:>22}{format_time(r.riegel_s):>10}"
+            f"{row['distance']:<15}{format_time(row['time_s']):>10}{rng:>22}"
+            f"{format_time(row['riegel_s']):>10}"
         )
     typer.echo(
         f"\nModel: {predictor.model_name()}, trained on {predictor.n_train_races_} running races "
@@ -71,7 +72,7 @@ def evaluate(
     """Compare baseline models under chronological and athlete-grouped evaluation."""
     from race_predictor.services import compare_baselines
 
-    table, n_races, n_athletes = compare_baselines(data, with_gru)
+    table, n_races, n_athletes = compare_baselines(data, with_gru=with_gru)
     typer.echo(f"{n_races} races from {n_athletes} athletes")
     typer.echo(table.round(2).to_string(index=False))
 

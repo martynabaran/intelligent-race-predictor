@@ -14,6 +14,7 @@ from functools import partial
 
 import numpy as np
 import pandas as pd
+from typing_extensions import override
 
 from race_predictor.domain import RaceMode
 from race_predictor.features import RaceDataset
@@ -25,7 +26,7 @@ DEFAULT_MODELS: dict[RaceMode, Callable[[], RaceModel]] = {
 }
 
 
-def _label(factory) -> str:
+def _label(factory: Callable[[], RaceModel]) -> str:
     return factory().name  # some models set their name per instance
 
 
@@ -35,19 +36,25 @@ def race_modes(ds: RaceDataset) -> np.ndarray:
 
 
 class ModeRouter(RaceModel):
-    def __init__(self, models: Mapping[RaceMode, Callable[[], RaceModel]] | None = None):
+    """Predict each race with the model of its mode.
+
+    ``models`` maps every :class:`RaceMode` to a factory of an unfitted model (default:
+    :data:`DEFAULT_MODELS`); it must cover all modes. After ``fit``, the fitted models are in
+    ``fitted_``.
+    """
+
+    def __init__(self, models: Mapping[RaceMode, Callable[[], RaceModel]] | None = None) -> None:
         self.models = dict(DEFAULT_MODELS if models is None else models)
         if set(self.models) != set(RaceMode):
             raise ValueError(f"need one model per mode: {[m.value for m in RaceMode]}")
+        labels = ", ".join(f"{mode.value}={_label(make)}" for mode, make in self.models.items())
+        self.name = f"Router({labels})"
 
-    @property
-    def name(self) -> str:
-        return "Router(" + ", ".join(f"{m.value}={_label(f)}" for m, f in self.models.items()) + ")"
-
+    @override
     def fit(self, ds: RaceDataset) -> ModeRouter:
         # Modes sharing a factory share one fitted model.
         fitted: dict[int, RaceModel] = {}
-        self.fitted_ = {}
+        self.fitted_: dict[RaceMode, RaceModel] = {}
         for mode, make in self.models.items():
             if id(make) not in fitted:
                 fitted[id(make)] = make().fit(ds)
@@ -55,8 +62,10 @@ class ModeRouter(RaceModel):
         return self
 
     def model_for(self, mode: RaceMode) -> RaceModel:
+        """Return the fitted model that handles ``mode``."""
         return self.fitted_[RaceMode(mode)]
 
+    @override
     def predict(self, ds: RaceDataset) -> np.ndarray:
         modes = race_modes(ds)
         pred = np.full(len(ds), np.nan)
@@ -65,11 +74,13 @@ class ModeRouter(RaceModel):
             pred[idx] = self.fitted_[mode].predict(ds.subset(idx))
         return pred
 
+    @override
     def contributions(self, ds: RaceDataset) -> pd.DataFrame:
         """Per-race contributions from the model that predicted it (missing columns = 0)."""
         modes = race_modes(ds)
-        parts = []
+        parts: list[pd.DataFrame] = []
         for mode in set(modes):
             idx = np.flatnonzero(modes == mode)
-            parts.append(self.fitted_[mode].contributions(ds.subset(idx)).set_index(idx))
+            contributions = self.fitted_[mode].contributions(ds.subset(idx))
+            parts.append(contributions.set_index(idx))
         return pd.concat(parts).sort_index().fillna(0.0).reset_index(drop=True)

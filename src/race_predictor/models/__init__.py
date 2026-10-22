@@ -1,3 +1,5 @@
+"""Race-pace models: the :class:`RaceModel` interface, baselines, hybrid and router."""
+
 from race_predictor.models.base import RaceModel
 from race_predictor.models.baselines import (
     HistGradientBoostingBaseline,

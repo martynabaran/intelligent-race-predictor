@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import argparse
+import logging
 from collections.abc import Callable, Iterator
 from pathlib import Path
 
@@ -23,15 +24,18 @@ from race_predictor.processing import Pipeline, cleaning_pipeline, load_race_lab
 from race_predictor.sources import load_directory
 from race_predictor.utils import timer
 
+logger = logging.getLogger(__name__)
+
 ModelFactory = Callable[[], RaceModel]
 LABELS_FILE = "race_labels.csv"
 
 
 def _score(ds: RaceDataset, pred: np.ndarray, index: np.ndarray) -> dict[str, float]:
-    sub = ds.subset(index)
-    dist_km = sub.meta["race_distance_m"].to_numpy() / 1000
-    time = evaluate(sub.y * dist_km, pred * dist_km)
-    pace = evaluate(sub.y, pred)
+    """Time and pace metrics of ``pred`` (pace s/km) for the races at ``index`` of ``ds``."""
+    scored = ds.subset(index)
+    dist_km = scored.meta["race_distance_m"].to_numpy() / 1000
+    time = evaluate(scored.y * dist_km, pred * dist_km)
+    pace = evaluate(scored.y, pred)
     return {
         "MAE_time_min": time["mae"] / 60,
         "RMSE_time_min": time["rmse"] / 60,
@@ -44,34 +48,39 @@ def _score(ds: RaceDataset, pred: np.ndarray, index: np.ndarray) -> dict[str, fl
 def compare_models(
     ds: RaceDataset, factories: dict[str, ModelFactory], n_splits: int = 5
 ) -> pd.DataFrame:
-    """One row per (model, protocol). Grouped CV scores are computed on pooled out-of-fold
-    predictions."""
+    """One row per (model, protocol).
+
+    Grouped CV scores are computed on pooled out-of-fold predictions.
+    """
     rows = []
     for name, make in factories.items():
-        with timer(name) as t:
+        with timer(name) as stopwatch:
             for protocol, pred, index in protocol_predictions(ds, make, n_splits):
                 rows.append({"model": name, "protocol": protocol, **_score(ds, pred, index)})
-        for r in rows[-2:]:
-            r["fit_s"] = t.seconds
+        for row in rows[-2:]:
+            row["fit_s"] = stopwatch.seconds
     return pd.DataFrame(rows)
 
 
 def protocol_predictions(
     ds: RaceDataset, make: ModelFactory, n_splits: int = 5
 ) -> Iterator[tuple[str, np.ndarray, np.ndarray]]:
-    """Yield ``(protocol, predictions, test_index)`` for both evaluation protocols. Grouped CV
-    yields the pooled out-of-fold predictions."""
+    """Yield ``(protocol, predictions, test_index)`` for both evaluation protocols.
+
+    Grouped CV yields the pooled out-of-fold predictions.
+    """
     train, test = chronological_split(ds)
     yield "chronological", make().fit(ds.subset(train)).predict(ds.subset(test)), test
 
     oof, order = [], []
-    for tr, te in grouped_splits(ds, n_splits):
-        oof.append(make().fit(ds.subset(tr)).predict(ds.subset(te)))
-        order.append(te)
+    for train_idx, test_idx in grouped_splits(ds, n_splits):
+        oof.append(make().fit(ds.subset(train_idx)).predict(ds.subset(test_idx)))
+        order.append(test_idx)
     yield "grouped-CV", np.concatenate(oof), np.concatenate(order)
 
 
-def default_factories(with_gru: bool = False) -> dict[str, ModelFactory]:
+def default_factories(*, with_gru: bool = False) -> dict[str, ModelFactory]:
+    """Baseline model factories by name; LightGBM and the GRU are added when available/asked."""
     factories: dict[str, ModelFactory] = {
         "Riegel": RiegelBaseline,
         "Ridge": RidgeBaseline,
@@ -82,7 +91,7 @@ def default_factories(with_gru: bool = False) -> dict[str, ModelFactory]:
 
         factories["LightGBM"] = LightGBMBaseline
     except (ImportError, OSError):
-        print("LightGBM unavailable (on macOS: `brew install libomp`) - skipping")
+        logger.warning("LightGBM unavailable (on macOS: `brew install libomp`) - skipping")
     if with_gru:
         from race_predictor.models.gru import GRUModel
 
@@ -113,16 +122,17 @@ def load_dataset(data_dir: Path, pipeline: Pipeline | None = None) -> RaceDatase
 
 
 def main() -> None:
-    ap = argparse.ArgumentParser(description=__doc__)
-    ap.add_argument("--data", type=Path, default=Path("data"))
-    ap.add_argument("--out", type=Path, default=Path("docs/RESULTS_BASELINES.md"))
-    ap.add_argument("--with-gru", action="store_true")
-    args = ap.parse_args()
+    """Run the baselines on ``--data`` and write the results table to ``--out``."""
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--data", type=Path, default=Path("data"))
+    parser.add_argument("--out", type=Path, default=Path("docs/RESULTS_BASELINES.md"))
+    parser.add_argument("--with-gru", action="store_true")
+    args = parser.parse_args()
 
     ds = load_dataset(args.data)
-    print(f"{len(ds)} races from {ds.meta['athlete'].nunique()} athletes")
-    table = compare_models(ds, default_factories(args.with_gru)).round(2)
-    print(table.to_string(index=False))
+    print(f"{len(ds)} races from {ds.meta['athlete'].nunique()} athletes")  # noqa: T201 - CLI output
+    table = compare_models(ds, default_factories(with_gru=args.with_gru)).round(2)
+    print(table.to_string(index=False))  # noqa: T201 - CLI output
     args.out.write_text(
         f"# Baseline results\n\n{len(ds)} races, {ds.meta['athlete'].nunique()} athletes. "
         "Metrics are on total race time (pace x distance). `chronological` = thesis protocol "

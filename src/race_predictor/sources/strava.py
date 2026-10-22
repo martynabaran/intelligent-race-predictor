@@ -7,6 +7,7 @@ from pathlib import Path
 
 import pandas as pd
 from dateutil import parser as date_parser
+from typing_extensions import override
 
 from race_predictor.domain import Activity, ActivityType
 from race_predictor.sources.base import ActivitySource, read_header, register_source, to_float
@@ -27,15 +28,19 @@ def parse_strava_date(text: str) -> pd.Timestamp:
     try:
         return pd.Timestamp(date_parser.parse(text, dayfirst=False))
     except (ValueError, OverflowError, TypeError):
-        return pd.NaT
+        return pd.NaT  # type: ignore[return-value]  # NaT is the documented "no date" sentinel
 
 
 @register_source("strava")
 class StravaCsvSource(ActivitySource):
+    """Reads the Strava ``activities.csv`` export."""
+
+    @override
     @classmethod
     def can_read(cls, path: Path) -> bool:
         return _REQUIRED.issubset(read_header(path))
 
+    @override
     def read(self, path: Path, athlete_id: str) -> Iterator[Activity]:
         raw = pd.read_csv(path, low_memory=False)
         # Strava exports contain duplicated column names; pandas suffixes the 2nd copy with ".1".
@@ -43,8 +48,9 @@ class StravaCsvSource(ActivitySource):
         hr_max = raw["Max Heart Rate"]
         if "Max Heart Rate.1" in raw:
             hr_max = hr_max.combine_first(raw["Max Heart Rate.1"])
+        hr_max_values = hr_max.to_numpy()
 
-        for i, row in raw.iterrows():
+        for position, (_, row) in enumerate(raw.iterrows()):
             date = parse_strava_date(str(row["Activity Date"]))
             if pd.isna(date):
                 continue
@@ -58,7 +64,7 @@ class StravaCsvSource(ActivitySource):
                 avg_speed_ms=to_float(row.get("Average Speed")),
                 max_speed_ms=to_float(row.get("Max Speed")),
                 avg_hr=to_float(row.get("Average Heart Rate")),
-                max_hr=to_float(hr_max.loc[i]),
+                max_hr=to_float(hr_max_values[position]),
                 elevation_gain_m=to_float(row.get("Elevation Gain")),
                 elevation_loss_m=to_float(row.get("Elevation Loss")),
                 avg_temp_c=to_float(row.get("Average Temperature")),

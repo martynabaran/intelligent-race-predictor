@@ -6,11 +6,11 @@ from race_predictor.features import build_race_dataset
 
 pytest.importorskip("tensorflow")
 
-from race_predictor.evaluation.embedded import StudentSpec, evaluate_embedded  # noqa: E402
-from race_predictor.models.base import RaceModel  # noqa: E402
-from race_predictor.models.distill import CompactSequence, Distilled, TabularMLP  # noqa: E402
-from race_predictor.models.sequence import SequenceModel  # noqa: E402
-from race_predictor.models.tflite import (  # noqa: E402
+from race_predictor.evaluation.embedded import StudentSpec, evaluate_embedded
+from race_predictor.models.base import RaceModel
+from race_predictor.models.distill import CompactSequence, Distilled, TabularMLP
+from race_predictor.models.sequence import SequenceModel
+from race_predictor.models.tflite import (
     TFLiteModel,
     convert_to_tflite,
     unroll_rnns,
@@ -23,25 +23,25 @@ def ds(frame):
     for a, speed in zip("abcd", (3.0, 3.4, 3.8, 4.2), strict=True):
         for i in range(14):
             rows.append(
-                dict(
-                    athlete=a,
-                    date=pd.Timestamp("2023-01-01") + pd.Timedelta(days=7 * i),
-                    avg_speed_ms=speed,
-                    is_race=False,
-                    is_triathlon=0,
-                )
+                {
+                    "athlete": a,
+                    "date": pd.Timestamp("2023-01-01") + pd.Timedelta(days=7 * i),
+                    "avg_speed_ms": speed,
+                    "is_race": False,
+                    "is_triathlon": 0,
+                }
             )
         for j in range(3):
             rows.append(
-                dict(
-                    athlete=a,
-                    date=pd.Timestamp("2023-04-20") + pd.Timedelta(days=14 * j),
-                    distance_m=10000.0,
-                    avg_speed_ms=speed * 1.1,
-                    moving_s=10000 / (speed * 1.1),
-                    is_race=True,
-                    is_triathlon=0,
-                )
+                {
+                    "athlete": a,
+                    "date": pd.Timestamp("2023-04-20") + pd.Timedelta(days=14 * j),
+                    "distance_m": 10000.0,
+                    "avg_speed_ms": speed * 1.1,
+                    "moving_s": 10000 / (speed * 1.1),
+                    "is_race": True,
+                    "is_triathlon": 0,
+                }
             )
     return build_race_dataset(frame(rows))
 

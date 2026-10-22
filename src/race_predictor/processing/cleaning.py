@@ -16,7 +16,7 @@ from :func:`cleaning_pipeline`: the shared steps are identical, and only what ha
 
 from __future__ import annotations
 
-from typing import Literal
+from typing import TYPE_CHECKING, Literal
 
 import pandas as pd
 
@@ -35,11 +35,14 @@ from race_predictor.processing.pipeline import (
     ValidateMaxHeartRate,
 )
 
+if TYPE_CHECKING:
+    from race_predictor.processing.races import RaceDetector
+
 Purpose = Literal["train", "predict"]
 
 
-def shared_steps(fast_run_filter: bool = True, hr_spike_filter: bool = True) -> list[Step]:
-    """Steps applied to every dataset, for training and prediction alike."""
+def shared_steps(*, fast_run_filter: bool = True, hr_spike_filter: bool = True) -> list[Step]:
+    """Return the steps applied to every dataset, for training and prediction alike."""
     steps: list[Step] = [RemoveAnomalies()]
     if fast_run_filter:
         steps.append(RemoveImplausiblyFastRuns())
@@ -50,13 +53,14 @@ def shared_steps(fast_run_filter: bool = True, hr_spike_filter: bool = True) -> 
 
 def cleaning_pipeline(
     purpose: Purpose = "train",
-    detector=None,
+    detector: RaceDetector | None = None,
+    *,
     fast_run_filter: bool = True,
     hr_spike_filter: bool = True,
     include_triathlon_races: bool = False,
     race_labels: pd.DataFrame | None = None,
 ) -> Pipeline:
-    """Cleaning chain for ``purpose``.
+    """Build the cleaning chain for ``purpose``.
 
     ``fast_run_filter`` (``RemoveImplausiblyFastRuns``) only drops non-runs, so the detected races
     are unchanged. ``hr_spike_filter`` (``ValidateMaxHeartRate``) lowers inflated HRmax, which
@@ -76,7 +80,7 @@ def cleaning_pipeline(
         *([] if race_labels is None else [ApplyRaceLabels(race_labels)]),
         *([] if include_triathlon_races else [DropTriathlonRaces()]),
     ]
-    shared = shared_steps(fast_run_filter, hr_spike_filter)
+    shared = shared_steps(fast_run_filter=fast_run_filter, hr_spike_filter=hr_spike_filter)
     if purpose == "predict":
         return Pipeline(
             [*shared, ValidateHeartRate(keep_missing=True), *labelling, ImputeMissing()]
@@ -85,15 +89,23 @@ def cleaning_pipeline(
 
 
 def default_pipeline(
-    detector=None,
+    detector: RaceDetector | None = None,
+    *,
     fast_run_filter: bool = True,
     hr_spike_filter: bool = True,
     include_triathlon_races: bool = False,
     race_labels: pd.DataFrame | None = None,
 ) -> Pipeline:
-    """Training chain. ``fast_run_filter=False, hr_spike_filter=False,
-    include_triathlon_races=True`` reproduces the thesis chain exactly. Same as
-    ``cleaning_pipeline("train", ...)``."""
+    """Build the training chain, same as ``cleaning_pipeline("train", ...)``.
+
+    ``fast_run_filter=False, hr_spike_filter=False, include_triathlon_races=True`` reproduces the
+    thesis chain exactly.
+    """
     return cleaning_pipeline(
-        "train", detector, fast_run_filter, hr_spike_filter, include_triathlon_races, race_labels
+        "train",
+        detector,
+        fast_run_filter=fast_run_filter,
+        hr_spike_filter=hr_spike_filter,
+        include_triathlon_races=include_triathlon_races,
+        race_labels=race_labels,
     )
