@@ -48,6 +48,7 @@ predictions as indicative. Choose *road race* or *triathlon (run leg)*: each use
 | 8. Clean-up | `processing/cleaning.py`, `services/`, `tests/test_architecture.py` | One cleaning pipeline for training and prediction; UIs use only `services/` (`Prediction` contract); import layering checked by a test |
 | 10. Race modes | `models/router.py`, `models/hybrid.py`, `evaluation/modes.py` | Model per race mode: Riegel for road races, ridge for triathlon runs (the app's model now); nested selection confirms it → [modes](docs/RESULTS_MODES.md) |
 | 9. Training load | `training_load/`, `services/load.py`, `app/pages/` | TRIMP per activity (fallback for missing heart rate, flagged); daily fitness / fatigue / form state (CTL, ATL, TSB) with leak-free `state_at`; Banister fit per athlete; load features for race datasets (off by default); *Training load* page in the app. **Negative result:** the features do not improve prediction and the Banister model loses to a running mean → [results](docs/RESULTS_TRAINING_LOAD.md) |
+| 12a. Planner: zones and feasibility | `planning/`, `domain/goal.py` | Pace zones from a race result (Daniels VDOT: easy, marathon, threshold, interval, repetition) and a goal verdict (realistic / ambitious / unlikely) against a predicted time and its range. Pure functions, no models. Plan builder, pacing and calendar export follow in 12b-12d |
 
 ### Headline findings (MAPE of race time on **unseen athletes**, 170 races)
 

@@ -17,6 +17,7 @@ LAYERS = {
     "exceptions": 0,
     "utils": 0,
     "sources": 1,
+    "planning": 1,  # rule-based, sees only domain: no models, no data processing
     "processing": 2,
     "training_load": 3,
     "features": 4,
