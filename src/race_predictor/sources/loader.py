@@ -29,11 +29,16 @@ COLUMNS = [
 
 
 def activities_to_frame(activities: list[Activity]) -> pd.DataFrame:
-    df = pd.DataFrame([asdict(a) for a in activities])
+    """Convert activities to a DataFrame with the canonical :data:`COLUMNS`."""
+    df = pd.DataFrame([asdict(activity) for activity in activities])
     if df.empty:
         return pd.DataFrame(columns=COLUMNS)
     df = df.rename(columns={"athlete_id": "athlete"})
-    df["type"] = df["type"].map(lambda t: getattr(t, "value", t)).astype(object)
+    df["type"] = (
+        df["type"]
+        .map(lambda activity_type: getattr(activity_type, "value", activity_type))
+        .astype(object)
+    )
     df["date"] = pd.to_datetime(df["date"])
     return df[COLUMNS]
 
@@ -51,10 +56,10 @@ def load_activities(
 def load_directory(directory: str | Path) -> pd.DataFrame:
     """Load every CSV in ``directory`` as a separate athlete; unsupported files are skipped."""
     frames = []
-    for i, path in enumerate(sorted(Path(directory).glob("*.csv")), start=1):
+    for index, path in enumerate(sorted(Path(directory).glob("*.csv")), start=1):
         try:
             source = detect_source(path)
         except UnsupportedExportFormatError:
             continue
-        frames.append(load_activities(path, f"{source.name}_{i}", source))
+        frames.append(load_activities(path, f"{source.name}_{index}", source))
     return pd.concat(frames, ignore_index=True) if frames else pd.DataFrame(columns=COLUMNS)

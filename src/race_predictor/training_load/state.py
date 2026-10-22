@@ -12,6 +12,7 @@ state only after that much history. When building features for a race, take the 
 from __future__ import annotations
 
 from collections.abc import Iterator
+from typing import Any
 
 import numpy as np
 import pandas as pd
@@ -80,13 +81,13 @@ def load_state(
     return pd.DataFrame({"trimp": daily, "ctl": ctl, "atl": atl, "tsb": ctl - atl})
 
 
-def load_states(activities: pd.DataFrame, **kwargs) -> Iterator[tuple[str, pd.DataFrame]]:
+def load_states(activities: pd.DataFrame, **kwargs: Any) -> Iterator[tuple[str, pd.DataFrame]]:
     """Yield ``(athlete, load_state)`` for every athlete in the table, one at a time."""
     for athlete, group in activities.groupby("athlete"):
         yield str(athlete), load_state(group, **kwargs)
 
 
-def state_at(state: pd.DataFrame, date: pd.Timestamp, inclusive: bool = False) -> pd.Series:
+def state_at(state: pd.DataFrame, date: pd.Timestamp, *, inclusive: bool = False) -> pd.Series:
     """State on the last day before ``date`` (or on ``date`` itself if ``inclusive``).
 
     Raises:

@@ -7,6 +7,7 @@ from collections.abc import Iterator
 from pathlib import Path
 
 import pandas as pd
+from typing_extensions import override
 
 from race_predictor.domain import Activity, ActivityType
 from race_predictor.sources.base import ActivitySource, read_header, register_source, to_float
@@ -29,20 +30,21 @@ _TYPE_MAP = {
     "Weight Training": ActivityType.WEIGHT_TRAINING,
 }
 _REQUIRED = {"Typ aktywności", "Data", "Dystans", "Czas"}
+MAX_SWIM_DISTANCE_KM = 15.0  # larger swim distances in the export are in metres
 
 
 def parse_duration(text: object) -> float:
-    """``"HH:MM:SS(.f)"`` or ``"MM:SS"`` -> seconds (NaN on failure)."""
+    """Convert ``"HH:MM:SS(.f)"`` or ``"MM:SS"`` to seconds (NaN on failure)."""
     if text is None or (isinstance(text, float) and math.isnan(text)):
         return math.nan
     parts = str(text).strip().split(":")
     try:
-        nums = [float(p) for p in parts]
+        numbers = [float(part) for part in parts]
     except ValueError:
         return math.nan
     seconds = 0.0
-    for n in nums:
-        seconds = seconds * 60 + n
+    for number in numbers:
+        seconds = seconds * 60 + number
     return seconds
 
 
@@ -70,6 +72,7 @@ def speed_to_ms(value: object, activity_type: ActivityType) -> float:
 
 
 def _first_present(row: pd.Series, *names: str) -> object:
+    """Return the first of ``names`` that is a column of ``row``, else None."""
     for name in names:
         if name in row.index:
             return row[name]
@@ -78,10 +81,14 @@ def _first_present(row: pd.Series, *names: str) -> object:
 
 @register_source("garmin")
 class GarminCsvSource(ActivitySource):
+    """Reads the Garmin Connect activity CSV export."""
+
+    @override
     @classmethod
     def can_read(cls, path: Path) -> bool:
         return _REQUIRED.issubset(read_header(path))
 
+    @override
     def read(self, path: Path, athlete_id: str) -> Iterator[Activity]:
         raw = pd.read_csv(path, dtype=str)
         for _, row in raw.iterrows():
@@ -91,14 +98,14 @@ class GarminCsvSource(ActivitySource):
             atype = _TYPE_MAP.get(row["Typ aktywności"], ActivityType.WORKOUT)
 
             distance_km = to_float(row["Dystans"])
-            if atype is ActivityType.SWIM and distance_km > 15:  # swims are sometimes in metres
+            if atype is ActivityType.SWIM and distance_km > MAX_SWIM_DISTANCE_KM:
                 distance_km /= 1000
 
             temps = [
                 to_float(row.get("Maksymalna temperatura")),
                 to_float(row.get("Minimalna temperatura")),
             ]
-            temps = [t for t in temps if not math.isnan(t)]
+            temps = [temp for temp in temps if not math.isnan(temp)]
 
             yield Activity(
                 athlete_id=athlete_id,

@@ -1,3 +1,5 @@
+"""Feature construction: one example per race, plus Kaggle marathon pretraining data."""
+
 from race_predictor.features.dataset import (
     SEQ_FEATURES,
     SHARED_SEQ_FEATURES,

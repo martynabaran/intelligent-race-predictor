@@ -77,7 +77,7 @@ def test_the_switch_survives_subsetting_and_new_targets():
     ds = build_race_dataset(training_frame()).with_load()
     assert ds.subset([0, 1]).include_load
     assert ds.with_targets(ds.y * 2).include_load
-    assert not ds.with_load(False).include_load
+    assert not ds.with_load(enabled=False).include_load
 
 
 def test_with_targets_replaces_only_the_targets():
@@ -102,8 +102,11 @@ def test_races_do_not_see_training_after_them():
         hr_max=190.0,
     )
     changed = build_race_dataset(pd.concat([df, extra], ignore_index=True))
-    first = lambda ds: ds.static.iloc[0][LOAD_FEATURES].to_numpy(dtype=float)  # noqa: E731
-    np.testing.assert_allclose(first(changed), first(base))
+
+    def first_race_load(ds):
+        return ds.static.iloc[0][LOAD_FEATURES].to_numpy(dtype=float)
+
+    np.testing.assert_allclose(first_race_load(changed), first_race_load(base))
 
 
 def test_other_sports_raise_the_load_before_a_race():
@@ -120,8 +123,11 @@ def test_other_sports_raise_the_load_before_a_race():
     )
     with_rides = build_race_dataset(pd.concat([df, rides], ignore_index=True))
     base = build_race_dataset(df)
-    key = lambda ds: ds.static[ds.meta["athlete"].eq("a")].iloc[0]["load_atl"]  # noqa: E731
-    assert key(with_rides) > key(base)
+
+    def fatigue_before_first_race(ds):
+        return ds.static[ds.meta["athlete"].eq("a")].iloc[0]["load_atl"]
+
+    assert fatigue_before_first_race(with_rides) > fatigue_before_first_race(base)
 
 
 def test_query_dataset_has_load_features_that_ignore_the_race_day_and_later():

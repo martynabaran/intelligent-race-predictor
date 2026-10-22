@@ -18,35 +18,35 @@ from race_predictor.processing import distance_label
 
 def segment_masks(ds: RaceDataset) -> dict[str, np.ndarray]:
     """Boolean mask per segment, over all races of ``ds``."""
-    tri = ds.static["is_triathlon"].to_numpy() == 1
+    triathlon = ds.static["is_triathlon"].to_numpy() == 1
     labels = ds.meta["race_distance_m"].map(distance_label).to_numpy()
-    masks = {"all": np.ones(len(ds), dtype=bool), "stand-alone": ~tri, "triathlon": tri}
+    masks = {"all": np.ones(len(ds), dtype=bool), "stand-alone": ~triathlon, "triathlon": triathlon}
     for label in dict.fromkeys(labels):
-        masks[f"{label} (stand-alone)"] = (labels == label) & ~tri
+        masks[f"{label} (stand-alone)"] = (labels == label) & ~triathlon
     if "riegel_ref_is_race" in ds.static:  # what Riegel projects from: a race or a training run
-        ref = ds.static["riegel_ref_is_race"].to_numpy()
-        masks["reference: race"] = ref == 1
-        masks["reference: training run"] = ref == 0
+        reference = ds.static["riegel_ref_is_race"].to_numpy()
+        masks["reference: race"] = reference == 1
+        masks["reference: training run"] = reference == 0
     return masks
 
 
 def breakdown(ds: RaceDataset, pred: np.ndarray, index: np.ndarray) -> pd.DataFrame:
     """One row per segment with at least one race in ``index`` (metrics on total race time)."""
     km = ds.meta["race_distance_m"].to_numpy()[index] / 1000
-    true_t, pred_t = ds.y[index] * km, np.asarray(pred) * km
+    true_time, pred_time = ds.y[index] * km, np.asarray(pred) * km
     rows = []
     for segment, mask in segment_masks(ds).items():
-        sel = mask[index]
-        if not sel.any():
+        selected = mask[index]
+        if not selected.any():
             continue
-        m = evaluate(true_t[sel], pred_t[sel])
+        metrics = evaluate(true_time[selected], pred_time[selected])
         rows.append(
             {
                 "segment": segment,
-                "n": int(sel.sum()),
-                "MAPE_%": m["mape_pct"],
-                "MedAPE_%": m["median_ape_pct"],
-                "MAE_time_min": m["mae"] / 60,
+                "n": int(selected.sum()),
+                "MAPE_%": metrics["mape_pct"],
+                "MedAPE_%": metrics["median_ape_pct"],
+                "MAE_time_min": metrics["mae"] / 60,
             }
         )
     return pd.DataFrame(rows)

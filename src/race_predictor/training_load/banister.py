@@ -85,28 +85,30 @@ def _impulse_responses(
     start = min(load.index.min(), days.min())
     end = max(load.index.max(), days.max())
     calendar = pd.date_range(start, end, freq="D")
-    w = load.reindex(calendar, fill_value=0.0).to_numpy(dtype=float)
+    daily_w = load.reindex(calendar, fill_value=0.0).to_numpy(dtype=float)
 
     target = calendar.get_indexer(days)
     lag = target[:, None] - np.arange(len(calendar))[None, :]  # days between load and target
     past = lag > 0  # strictly earlier days only
-    sums = [np.where(past, np.exp(-lag / tau), 0.0) @ w for tau in (tau1, tau2)]
+    sums = [np.where(past, np.exp(-lag / tau), 0.0) @ daily_w for tau in (tau1, tau2)]
     return sums[0], sums[1]
 
 
 def _solve_linear(
-    fitness: np.ndarray, fatigue: np.ndarray, y: np.ndarray
+    fitness: np.ndarray, fatigue: np.ndarray, performance: np.ndarray
 ) -> tuple[BanisterParams, float]:
     """Non-negative ``k1, k2`` and free ``p0`` for given responses (``taus`` filled by caller)."""
-    f_mean, g_mean, y_mean = fitness.mean(), fatigue.mean(), y.mean()
-    design = np.column_stack([fitness - f_mean, -(fatigue - g_mean)])
-    (k1, k2), _ = nnls(design, y - y_mean)
-    p0 = y_mean - k1 * f_mean + k2 * g_mean
-    residual = y - (p0 + k1 * fitness - k2 * fatigue)
+    fitness_mean, fatigue_mean = fitness.mean(), fatigue.mean()
+    perf_mean = performance.mean()
+    design = np.column_stack([fitness - fitness_mean, -(fatigue - fatigue_mean)])
+    (k1, k2), _ = nnls(design, performance - perf_mean)
+    p0 = perf_mean - k1 * fitness_mean + k2 * fatigue_mean
+    residual = performance - (p0 + k1 * fitness - k2 * fatigue)
     return BanisterParams(float(p0), float(k1), float(k2)), float(np.sum(residual**2))
 
 
 def _prepare_races(races: pd.Series) -> pd.Series:
+    """Validate ``races`` and merge same-day races, sorted by date."""
     if races.empty:
         raise DataValidationError("need at least one race to fit the Banister model")
     days = pd.DatetimeIndex(races.index).normalize()
@@ -125,24 +127,27 @@ def fit_banister(daily_load: pd.Series, races: pd.Series) -> BanisterFit:
         DataValidationError: If ``races`` is empty.
     """
     races = _prepare_races(races)
-    y = races.to_numpy(dtype=float)
-    n = len(y)
-    if n < MIN_RACES_FIXED_TAUS:
+    performance = races.to_numpy(dtype=float)
+    n_races = len(performance)
+    if n_races < MIN_RACES_FIXED_TAUS:
         return BanisterFit(
-            BanisterParams(float(y.mean()), 0.0, 0.0), "mean_only", n, float(y.std())
+            BanisterParams(float(performance.mean()), 0.0, 0.0),
+            "mean_only",
+            n_races,
+            float(performance.std()),
         )
 
     def solve(tau1: float, tau2: float) -> tuple[BanisterParams, float]:
-        fitness, fatigue = _impulse_responses(daily_load, races.index, tau1, tau2)
-        params, sse = _solve_linear(fitness, fatigue, y)
+        fitness, fatigue = _impulse_responses(daily_load, pd.DatetimeIndex(races.index), tau1, tau2)
+        params, sse = _solve_linear(fitness, fatigue, performance)
         return BanisterParams(params.p0, params.k1, params.k2, tau1, tau2), sse
 
-    if n < MIN_RACES_FULL:
+    if n_races < MIN_RACES_FULL:
         params, sse = solve(LITERATURE_TAU1, LITERATURE_TAU2)
-        return BanisterFit(params, "fixed_taus", n, float(np.sqrt(sse / n)))
+        return BanisterFit(params, "fixed_taus", n_races, float(np.sqrt(sse / n_races)))
 
     # Coarse grid first (the objective is not convex), then a bounded local refinement.
-    grid = [(t1, t2) for t1 in (25, 35, 45, 60, 75) for t2 in (4, 7, 10, 14, 18)]
+    grid = [(tau1, tau2) for tau1 in (25, 35, 45, 60, 75) for tau2 in (4, 7, 10, 14, 18)]
     start = min(grid, key=lambda taus: solve(*taus)[1])
     refined = minimize(
         lambda taus: solve(*taus)[1],
@@ -151,7 +156,7 @@ def fit_banister(daily_load: pd.Series, races: pd.Series) -> BanisterFit:
         method="Nelder-Mead",
     )
     params, sse = solve(*refined.x)
-    return BanisterFit(params, "full", n, float(np.sqrt(sse / n)))
+    return BanisterFit(params, "full", n_races, float(np.sqrt(sse / n_races)))
 
 
 def rolling_forecast(
@@ -172,7 +177,7 @@ def rolling_forecast(
     rows = []
     for i in range(min_races, len(races)):
         fit = fit_banister(daily_load, races.iloc[:i])
-        date = races.index[i : i + 1]
+        date = pd.DatetimeIndex(races.index[i : i + 1])
         rows.append(
             {
                 "date": races.index[i],

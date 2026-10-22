@@ -18,10 +18,11 @@ from race_predictor.features import RaceDataset
 from race_predictor.models.base import RaceModel
 from race_predictor.models.baselines import HistGradientBoostingBaseline
 
-Space = Callable[[optuna.Trial], RaceModel]
+Space = Callable[[optuna.trial.BaseTrial], RaceModel]
 
 
-def histgb_space(trial: optuna.Trial) -> RaceModel:
+def histgb_space(trial: optuna.trial.BaseTrial) -> RaceModel:
+    """Search space of :class:`HistGradientBoostingBaseline`."""
     return HistGradientBoostingBaseline(
         learning_rate=trial.suggest_float("learning_rate", 0.01, 0.3, log=True),
         max_iter=trial.suggest_int("max_iter", 50, 400, step=50),
@@ -31,7 +32,8 @@ def histgb_space(trial: optuna.Trial) -> RaceModel:
     )
 
 
-def gru_space(trial: optuna.Trial) -> RaceModel:
+def gru_space(trial: optuna.trial.BaseTrial) -> RaceModel:
+    """Search space of :class:`GRUModel`."""
     from race_predictor.models.gru import GRUModel
 
     return GRUModel(
@@ -47,14 +49,13 @@ def gru_space(trial: optuna.Trial) -> RaceModel:
 
 def cv_mape(ds: RaceDataset, make: Callable[[], RaceModel], n_splits: int) -> float:
     """Pooled out-of-fold MAPE (%) on total race time."""
-    pred, idx = [], []
-    for tr, te in grouped_splits(ds, n_splits):
-        pred.append(make().fit(ds.subset(tr)).predict(ds.subset(te)))
-        idx.append(te)
-    idx = np.concatenate(idx)
-    sub = ds.subset(idx)
-    km = sub.meta["race_distance_m"].to_numpy() / 1000
-    return evaluate(sub.y * km, np.concatenate(pred) * km)["mape_pct"]
+    fold_preds, fold_indices = [], []
+    for train_idx, test_idx in grouped_splits(ds, n_splits):
+        fold_preds.append(make().fit(ds.subset(train_idx)).predict(ds.subset(test_idx)))
+        fold_indices.append(test_idx)
+    scored = ds.subset(np.concatenate(fold_indices))
+    km = scored.meta["race_distance_m"].to_numpy() / 1000
+    return evaluate(scored.y * km, np.concatenate(fold_preds) * km)["mape_pct"]
 
 
 def tune(
@@ -65,6 +66,7 @@ def tune(
     seed: int = 0,
     timeout: float | None = None,
 ) -> optuna.Study:
+    """Minimise :func:`cv_mape` over ``space`` with a seeded TPE sampler; return the study."""
     study = optuna.create_study(direction="minimize", sampler=optuna.samplers.TPESampler(seed=seed))
     study.optimize(
         lambda trial: cv_mape(ds, lambda: space(trial), n_splits),
@@ -75,6 +77,7 @@ def tune(
 
 
 def best_model(study: optuna.Study, space: Space) -> RaceModel:
+    """Unfitted model built from the best parameters of ``study``."""
     return space(optuna.trial.FixedTrial(study.best_params))
 
 
@@ -87,14 +90,17 @@ def nested_evaluate(
     seed: int = 0,
 ) -> dict[str, float]:
     """Unbiased estimate of tuned performance: tune on each outer training set only."""
-    pred, idx = [], []
-    for tr, te in grouped_splits(ds, outer_splits):
-        train = ds.subset(tr)
+    fold_preds, fold_indices = [], []
+    for train_idx, test_idx in grouped_splits(ds, outer_splits):
+        train = ds.subset(train_idx)
         study = tune(train, space, n_trials, inner_splits, seed)
-        pred.append(best_model(study, space).fit(train).predict(ds.subset(te)))
-        idx.append(te)
-    idx = np.concatenate(idx)
-    sub = ds.subset(idx)
-    km = sub.meta["race_distance_m"].to_numpy() / 1000
-    m = evaluate(sub.y * km, np.concatenate(pred) * km)
-    return {"MAE_time_min": m["mae"] / 60, "RMSE_time_min": m["rmse"] / 60, "MAPE_%": m["mape_pct"]}
+        fold_preds.append(best_model(study, space).fit(train).predict(ds.subset(test_idx)))
+        fold_indices.append(test_idx)
+    scored = ds.subset(np.concatenate(fold_indices))
+    km = scored.meta["race_distance_m"].to_numpy() / 1000
+    metrics = evaluate(scored.y * km, np.concatenate(fold_preds) * km)
+    return {
+        "MAE_time_min": metrics["mae"] / 60,
+        "RMSE_time_min": metrics["rmse"] / 60,
+        "MAPE_%": metrics["mape_pct"],
+    }

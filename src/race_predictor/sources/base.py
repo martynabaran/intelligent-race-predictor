@@ -42,10 +42,16 @@ def register_source(name: str) -> Callable[[type[ActivitySource]], type[Activity
 
 
 def available_sources() -> list[str]:
+    """Return the names of all registered sources, sorted."""
     return sorted(_REGISTRY)
 
 
 def get_source(name: str) -> ActivitySource:
+    """Instantiate the source registered as ``name``.
+
+    Raises:
+        UnsupportedExportFormatError: If no source has that name.
+    """
     try:
         return _REGISTRY[name]()
     except KeyError:
@@ -64,6 +70,7 @@ def detect_source(path: str | Path) -> ActivitySource:
 
 
 def read_header(path: Path) -> list[str]:
+    """Return the CSV column names of ``path``; empty if it cannot be parsed."""
     try:
         return list(pd.read_csv(path, nrows=0).columns)
     except (OSError, ValueError, pd.errors.ParserError):

@@ -13,7 +13,9 @@ from __future__ import annotations
 from pathlib import Path
 
 import pandas as pd
+from typing_extensions import override
 
+from race_predictor.domain import ActivityType
 from race_predictor.exceptions import DataValidationError
 from race_predictor.processing.pipeline import Step
 
@@ -49,13 +51,14 @@ class ApplyRaceLabels(Step):
     ids or the data changed since the review).
     """
 
-    def __init__(self, labels: pd.DataFrame):
+    def __init__(self, labels: pd.DataFrame) -> None:
         missing = set(LABEL_COLUMNS) - set(labels.columns)
         if missing:
             raise DataValidationError(f"labels are missing columns {sorted(missing)}")
         self.labels = labels
         self.unmatched = labels.iloc[0:0]
 
+    @override
     def apply(self, df: pd.DataFrame) -> pd.DataFrame:
         runs = pd.DataFrame(
             {
@@ -64,7 +67,7 @@ class ApplyRaceLabels(Step):
                 "date": df["date"].dt.normalize().to_numpy(),
                 "km": (df["distance_m"] / 1000).to_numpy(),
             }
-        )[df["type"].eq("Run").to_numpy()]
+        )[df["type"].eq(ActivityType.RUN).to_numpy()]
         pairs = runs.merge(self.labels, on=["athlete", "date"])
         pairs = pairs[(pairs["km"] - pairs["distance_km"]).abs() <= DISTANCE_TOLERANCE_KM]
 

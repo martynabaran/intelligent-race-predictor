@@ -9,6 +9,8 @@ from enum import StrEnum
 
 
 class ActivityType(StrEnum):
+    """Type of a recorded activity; values match the ``type`` column of activity frames."""
+
     RUN = "Run"
     RIDE = "Ride"
     SWIM = "Swim"
@@ -61,6 +63,8 @@ class Race:
 
 @dataclass(slots=True)
 class Athlete:
+    """An athlete and all activities recorded for them by one ``source``."""
+
     id: str
     source: str
     activities: list[Activity] = field(default_factory=list)
@@ -68,10 +72,14 @@ class Athlete:
     @property
     def hr_max(self) -> float:
         """Estimated HRmax: the highest max heart rate ever recorded."""
-        values = [a.max_hr for a in self.activities if not math.isnan(a.max_hr)]
+        values = [
+            activity.max_hr for activity in self.activities if not math.isnan(activity.max_hr)
+        ]
         return max(values) if values else NAN
 
     def runs(self) -> list[Activity]:
+        """Return the athlete's runs, oldest first."""
         return sorted(
-            (a for a in self.activities if a.type is ActivityType.RUN), key=lambda a: a.date
+            (activity for activity in self.activities if activity.type is ActivityType.RUN),
+            key=lambda activity: activity.date,
         )

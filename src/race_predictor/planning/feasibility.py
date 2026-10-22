@@ -7,6 +7,9 @@ from dataclasses import dataclass
 from race_predictor.domain import Goal, Verdict
 from race_predictor.exceptions import DataValidationError
 
+#: Upper limit on the improvement credited for training between now and the race.
+MAX_TOTAL_GAIN_PCT = 15.0
+
 
 @dataclass(frozen=True, slots=True)
 class GoalAssessment:
@@ -66,6 +69,3 @@ def assess_goal(
     return GoalAssessment(
         verdict, goal.time_s, predicted, low, high, (goal.time_s / predicted - 1) * 100
     )
-
-
-MAX_TOTAL_GAIN_PCT = 15.0

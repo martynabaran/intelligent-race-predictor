@@ -7,6 +7,8 @@ effort, and the index is that effort's average speed (m/s): higher is better.
 
 from __future__ import annotations
 
+from typing import Any
+
 import numpy as np
 import pandas as pd
 
@@ -18,7 +20,7 @@ REFERENCE_DISTANCE_M = 10_000.0
 
 def equivalent_speed(
     distance_m: float | np.ndarray | pd.Series, time_s: float | np.ndarray | pd.Series
-):
+) -> Any:
     """Speed (m/s) of the 10 km effort equivalent to running ``distance_m`` in ``time_s``."""
     equivalent_time = time_s * (REFERENCE_DISTANCE_M / distance_m) ** RIEGEL_EXPONENT
     return REFERENCE_DISTANCE_M / equivalent_time

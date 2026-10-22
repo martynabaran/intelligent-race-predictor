@@ -10,29 +10,42 @@ from the first channel.
 
 from __future__ import annotations
 
+from collections.abc import Callable
+from typing import Any
+
 import keras
 import numpy as np
 from keras import layers, ops
 from sklearn.preprocessing import StandardScaler
+from typing_extensions import override
 
-from race_predictor.features import SEQ_FEATURES, STATIC_BINARY, STATIC_NUMERIC, RaceDataset
+from race_predictor.features import SEQ_FEATURES, RaceDataset
 from race_predictor.models.base import RaceModel
+from race_predictor.models.preprocessing import (
+    MAX_LEN,
+    PAD_VALUE,
+    numeric_static,
+    pad_scaled_sequences,
+    scaled_static,
+)
 
-PAD_VALUE = 999.0
-MAX_LEN = 256
+Tensor = Any  # Keras tensors are untyped (keras has no stubs in this project)
+Encoder = Callable[..., Tensor]
 
 
 class PadMask(layers.Layer):
     """(B, T, F) -> (B, T) float mask, 1 for real steps."""
 
-    def call(self, x):
+    @override
+    def call(self, x: Tensor) -> Tensor:
         return ops.cast(ops.not_equal(x[:, :, 0], PAD_VALUE), "float32")
 
 
 class ApplyMask(layers.Layer):
     """Zero the padded steps: (x, mask) -> x * mask."""
 
-    def call(self, inputs):
+    @override
+    def call(self, inputs: tuple[Tensor, Tensor]) -> Tensor:
         x, mask = inputs
         return x * mask[:, :, None]
 
@@ -40,91 +53,127 @@ class ApplyMask(layers.Layer):
 class MaskedPool(layers.Layer):
     """Concatenate masked mean- and max-pooling over time."""
 
-    def call(self, inputs):
-        h, mask = inputs
-        m = mask[:, :, None]
-        mean = ops.sum(h * m, axis=1) / ops.maximum(ops.sum(m, axis=1), 1.0)
-        mx = ops.max(h + (m - 1.0) * 1e9, axis=1)
-        return ops.concatenate([mean, mx], axis=-1)
+    @override
+    def call(self, inputs: tuple[Tensor, Tensor]) -> Tensor:
+        hidden, mask = inputs
+        mask_3d = mask[:, :, None]
+        mean = ops.sum(hidden * mask_3d, axis=1) / ops.maximum(ops.sum(mask_3d, axis=1), 1.0)
+        maximum = ops.max(hidden + (mask_3d - 1.0) * 1e9, axis=1)
+        return ops.concatenate([mean, maximum], axis=-1)
 
 
-def gru_encoder(x, mask, width, dropout):
+def gru_encoder(x: Tensor, mask: Tensor, width: int, dropout: float) -> Tensor:
+    """Two stacked bidirectional GRUs (the thesis encoder); ``mask`` is unused (Keras masking)."""
+    del mask  # the Masking layer derives its own mask from PAD_VALUE
     h = layers.Masking(mask_value=PAD_VALUE)(x)
     h = layers.Bidirectional(layers.GRU(width, return_sequences=True, kernel_regularizer="l2"))(h)
     h = layers.BatchNormalization()(layers.Dropout(dropout)(h))
     return layers.Bidirectional(layers.GRU(width, kernel_regularizer="l2"))(h)
 
 
-def tcn_encoder(x, mask, width, dropout, kernel_size=3, n_blocks=7):
+def tcn_encoder(
+    x: Tensor, mask: Tensor, width: int, dropout: float, kernel_size: int = 3, n_blocks: int = 7
+) -> Tensor:
     """Residual dilated causal convolutions (dilations 1, 2, 4 ... 64), masked pooling."""
     h = layers.Dense(width)(ApplyMask()([x, mask]))
-    for i in range(n_blocks):
-        r = h
+    for block in range(n_blocks):
+        residual = h
         for _ in range(2):
             h = layers.Conv1D(
-                width, kernel_size, padding="causal", dilation_rate=2**i, activation="relu"
+                width, kernel_size, padding="causal", dilation_rate=2**block, activation="relu"
             )(h)
             h = layers.Dropout(dropout)(h)
-        h = layers.LayerNormalization()(layers.Add()([r, h]))
+        h = layers.LayerNormalization()(layers.Add()([residual, h]))
         h = ApplyMask()([h, mask])
     return MaskedPool()([h, mask])
 
 
-def transformer_encoder(x, mask, width, dropout, n_layers=2, n_heads=2, max_len=MAX_LEN):
+def transformer_encoder(
+    x: Tensor,
+    mask: Tensor,
+    width: int,
+    dropout: float,
+    n_layers: int = 2,
+    n_heads: int = 2,
+    max_len: int = MAX_LEN,
+) -> Tensor:
+    """Transformer encoder with learned positions and padding-aware attention, masked pooling."""
     h = layers.Dense(width)(ApplyMask()([x, mask]))
     positions = layers.Embedding(max_len, width)(ops.arange(max_len))
     h = h + positions[None, : h.shape[1], :]
     attn_mask = layers.Lambda(lambda m: m[:, None, :] * m[:, :, None])(mask)
     for _ in range(n_layers):
-        a = layers.MultiHeadAttention(n_heads, width // n_heads, dropout=dropout)(
+        attended = layers.MultiHeadAttention(n_heads, width // n_heads, dropout=dropout)(
             h, h, attention_mask=attn_mask
         )
-        h = layers.LayerNormalization()(layers.Add()([h, layers.Dropout(dropout)(a)]))
-        f = layers.Dense(width * 2, activation="relu")(h)
-        f = layers.Dropout(dropout)(layers.Dense(width)(f))
-        h = layers.LayerNormalization()(layers.Add()([h, f]))
+        h = layers.LayerNormalization()(layers.Add()([h, layers.Dropout(dropout)(attended)]))
+        feed_forward = layers.Dense(width * 2, activation="relu")(h)
+        feed_forward = layers.Dropout(dropout)(layers.Dense(width)(feed_forward))
+        h = layers.LayerNormalization()(layers.Add()([h, feed_forward]))
         h = ApplyMask()([h, mask])
     return MaskedPool()([h, mask])
 
 
-ENCODERS = {"gru": gru_encoder, "tcn": tcn_encoder, "transformer": transformer_encoder}
+ENCODERS: dict[str, Encoder] = {
+    "gru": gru_encoder,
+    "tcn": tcn_encoder,
+    "transformer": transformer_encoder,
+}
 
 
-def build_model(encoder, seq_shape, static_shape, width=32, dense_units=32, dropout=0.3, lr=8e-4):
+def build_model(
+    encoder: str,
+    seq_shape: tuple[int, int],
+    static_shape: tuple[int],
+    width: int = 32,
+    dense_units: int = 32,
+    dropout: float = 0.3,
+    lr: float = 8e-4,
+) -> keras.Model:
+    """Build and compile the hybrid model: ``encoder`` over the sequence plus a static branch.
+
+    ``encoder`` is a key of :data:`ENCODERS`; ``seq_shape`` is ``(max_len, n_features)`` and
+    ``static_shape`` is ``(n_static_features,)``. The output is the standardised pace.
+    """
     seq_in = layers.Input(shape=seq_shape, name="seq_input")
     mask = PadMask()(seq_in)
-    x = ENCODERS[encoder](seq_in, mask, width, dropout)
-    x = layers.Dense(dense_units, activation="relu", kernel_regularizer="l2")(x)
-    x = layers.Dropout(dropout)(layers.BatchNormalization()(x))
+    seq_branch = ENCODERS[encoder](seq_in, mask, width, dropout)
+    seq_branch = layers.Dense(dense_units, activation="relu", kernel_regularizer="l2")(seq_branch)
+    seq_branch = layers.Dropout(dropout)(layers.BatchNormalization()(seq_branch))
 
     static_in = layers.Input(shape=static_shape, name="static_input")
-    s = layers.Dense(dense_units, activation="relu", kernel_regularizer="l2")(static_in)
-    s = layers.Dropout(dropout)(layers.BatchNormalization()(s))
+    static_branch = layers.Dense(dense_units, activation="relu", kernel_regularizer="l2")(static_in)
+    static_branch = layers.Dropout(dropout)(layers.BatchNormalization()(static_branch))
 
-    m = layers.Dense(dense_units, activation="relu", kernel_regularizer="l2")(
-        layers.concatenate([x, s])
+    merged = layers.Dense(dense_units, activation="relu", kernel_regularizer="l2")(
+        layers.concatenate([seq_branch, static_branch])
     )
-    m = layers.Dropout(dropout)(layers.BatchNormalization()(m))
-    model = keras.Model([seq_in, static_in], layers.Dense(1, name="pace_sec_per_km")(m))
+    merged = layers.Dropout(dropout)(layers.BatchNormalization()(merged))
+    model = keras.Model([seq_in, static_in], layers.Dense(1, name="pace_sec_per_km")(merged))
     model.compile(optimizer=keras.optimizers.Adam(lr), loss="mae")
     return model
 
 
 class SequenceModel(RaceModel):
-    """Hybrid sequence + static model; encoder is ``gru``, ``tcn`` or ``transformer``."""
+    """Hybrid sequence + static model; encoder is ``gru``, ``tcn`` or ``transformer``.
+
+    ``width`` is the encoder width; ``patience`` is the early-stopping patience (20 % validation
+    split). Fitted attributes: ``model_``, the scalers (``seq_scaler_``, ``static_scaler_``,
+    ``y_scaler_``) and ``max_len_``.
+    """
 
     def __init__(
         self,
-        encoder="tcn",
-        width=32,
-        dense_units=32,
-        dropout=0.3,
-        learning_rate=8e-4,
-        epochs=200,
-        patience=20,
-        batch_size=16,
-        seed=0,
-    ):
+        encoder: str = "tcn",
+        width: int = 32,
+        dense_units: int = 32,
+        dropout: float = 0.3,
+        learning_rate: float = 8e-4,
+        epochs: int = 200,
+        patience: int = 20,
+        batch_size: int = 16,
+        seed: int = 0,
+    ) -> None:
         if encoder not in ENCODERS:
             raise ValueError(f"encoder must be one of {sorted(ENCODERS)}")
         self.encoder, self.width, self.dense_units, self.dropout = (
@@ -138,44 +187,38 @@ class SequenceModel(RaceModel):
         self.name = {"gru": "GRU", "tcn": "TCN", "transformer": "Transformer"}[encoder]
 
     def inputs(self, ds: RaceDataset) -> list[np.ndarray]:
-        from keras.utils import pad_sequences
+        """Return the padded standardised sequences and the standardised static features."""
+        seq = pad_scaled_sequences(ds.seqs, self.seq_scaler_, self.max_len_)
+        return [seq, scaled_static(ds.static, self.static_scaler_)]
 
-        scaled = [self.seq_scaler_.transform(np.nan_to_num(s)) for s in ds.seqs]
-        seq = pad_sequences(
-            scaled,
-            maxlen=self.max_len_,
-            padding="post",
-            truncating="pre",
-            value=PAD_VALUE,
-            dtype="float32",
-        )
-        num = np.nan_to_num(ds.static[STATIC_NUMERIC].to_numpy(float))
-        static = np.column_stack(
-            [self.static_scaler_.transform(num), ds.static[STATIC_BINARY].to_numpy(float)]
-        )
-        return [seq, np.nan_to_num(static).astype("float32")]
-
-    def fit(self, ds: RaceDataset) -> SequenceModel:
+    def _fit_scalers(self, ds: RaceDataset) -> None:
+        """Seed the RNGs and fit the input/target scalers and the padded length on ``ds``."""
         keras.utils.set_random_seed(self.seed)
         self.seq_scaler_ = StandardScaler().fit(np.nan_to_num(np.vstack(ds.seqs)))
-        self.static_scaler_ = StandardScaler().fit(
-            np.nan_to_num(ds.static[STATIC_NUMERIC].to_numpy(float))
-        )
+        self.static_scaler_ = StandardScaler().fit(numeric_static(ds.static))
         self.y_scaler_ = StandardScaler().fit(ds.y.reshape(-1, 1))
-        self.max_len_ = min(max(len(s) for s in ds.seqs), MAX_LEN)
+        self.max_len_ = min(max(len(seq) for seq in ds.seqs), MAX_LEN)
 
-        x = self.inputs(ds)
+    @override
+    def fit(self, ds: RaceDataset) -> SequenceModel:
+        self._fit_scalers(ds)
+        inputs = self.inputs(ds)
         self.model_ = build_model(
             self.encoder,
             (self.max_len_, len(SEQ_FEATURES)),
-            (x[1].shape[1],),
+            (inputs[1].shape[1],),
             self.width,
             self.dense_units,
             self.dropout,
             self.learning_rate,
         )
+        self._train(inputs, ds)
+        return self
+
+    def _train(self, inputs: list[np.ndarray], ds: RaceDataset) -> None:
+        """Train ``model_`` on ``inputs`` and the standardised targets of ``ds``."""
         self.model_.fit(
-            x,
+            inputs,
             self.y_scaler_.transform(ds.y.reshape(-1, 1)).ravel(),
             validation_split=0.2,
             epochs=self.epochs,
@@ -186,10 +229,13 @@ class SequenceModel(RaceModel):
                 keras.callbacks.EarlyStopping(patience=self.patience, restore_best_weights=True)
             ],
         )
-        return self
 
     def to_pace(self, scaled: np.ndarray) -> np.ndarray:
-        return self.y_scaler_.inverse_transform(np.asarray(scaled).reshape(-1, 1)).ravel()
+        """Convert standardised model outputs back to pace [s/km]."""
+        return np.asarray(
+            self.y_scaler_.inverse_transform(np.asarray(scaled).reshape(-1, 1))
+        ).ravel()
 
+    @override
     def predict(self, ds: RaceDataset) -> np.ndarray:
         return self.to_pace(self.model_.predict(self.inputs(ds), verbose=0))

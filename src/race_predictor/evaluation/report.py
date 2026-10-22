@@ -8,8 +8,10 @@ CONCLUSIONS = "## Conclusions"
 
 
 def write_report(path: Path, generated: str) -> None:
-    """Write ``generated`` to ``path``, keeping the hand-written ``## Conclusions`` section that
-    is already in the file (numbers come from the scripts; the conclusions are edited by hand)."""
+    """Write ``generated`` to ``path``, keeping its hand-written ``## Conclusions`` section.
+
+    Numbers come from the scripts; the conclusions already in the file are edited by hand.
+    """
     previous = path.read_text() if path.exists() else ""
     if CONCLUSIONS in previous:
         kept = previous[previous.index(CONCLUSIONS) :]
