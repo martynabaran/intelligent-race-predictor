@@ -47,6 +47,7 @@ predictions as indicative. Choose *road race* or *triathlon (run leg)*: each use
 | Error analysis | `evaluation/breakdown.py`, `processing/pipeline.py` | Errors split into stand-alone races, triathlon runs and distances; median APE; filters for a ride logged as a run and HR-sensor spikes → [breakdown](docs/RESULTS_BREAKDOWN.md) |
 | 8. Clean-up | `processing/cleaning.py`, `services/`, `tests/test_architecture.py` | One cleaning pipeline for training and prediction; UIs use only `services/` (`Prediction` contract); import layering checked by a test |
 | 10. Race modes | `models/router.py`, `models/hybrid.py`, `evaluation/modes.py` | Model per race mode: Riegel for road races, ridge for triathlon runs (the app's model now); nested selection confirms it → [modes](docs/RESULTS_MODES.md) |
+| 9a. Training load | `training_load/` | TRIMP per activity (fallback for missing heart rate, flagged) and the daily fitness / fatigue / form state (CTL, ATL, TSB); `state_at` gives leak-free state before a race. Features and experiment follow in 9b / 9c |
 
 ### Headline findings (MAPE of race time on **unseen athletes**, 170 races)
 
