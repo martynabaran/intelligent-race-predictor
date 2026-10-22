@@ -15,8 +15,7 @@ import streamlit as st
 
 from race_predictor.domain import RaceMode
 from race_predictor.exceptions import RacePredictorError
-from race_predictor.predictor import DISTANCES_M, RacePredictor, format_time
-from race_predictor.sources import load_activities
+from race_predictor.services import DISTANCES_M, RacePredictor, format_time, load_activities
 
 DATA_DIR = Path(os.environ.get("RACE_PREDICTOR_DATA", "data"))
 MODES = {"Road race": RaceMode.ROAD, "Triathlon (run leg)": RaceMode.TRIATHLON}

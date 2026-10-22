@@ -154,6 +154,22 @@ def test_heuristic_detector_flags_hard_standard_distance(frame, days):
     assert flags.iloc[-1] and not flags.iloc[:-1].any()
 
 
+def test_heuristic_reasons_explain_the_decision(frame, days):
+    df = frame(
+        [
+            *({"date": days(i), "distance_m": 8000.0} for i in range(5)),
+            {"date": days(6), "distance_m": 10000.0, "avg_hr": 175.0},  # high HR + 10 k
+            {"date": days(7), "distance_m": 7000.0},  # nothing special
+        ]
+    ).assign(hr_max=190.0, is_triathlon=0)
+    detector = HeuristicRaceDetector()
+    reasons = detector.reasons(df)
+    assert reasons["is_race"].equals(detector.detect(df))
+    race = reasons.iloc[5]
+    assert race["high_hr"] and race["standard_distance"] and race["score"] == 3 and race["is_race"]
+    assert reasons.iloc[6]["score"] == 0 and not reasons.iloc[6]["is_race"]
+
+
 def test_pipeline_requires_columns():
     with pytest.raises(DataValidationError):
         Pipeline([]).run(pd.DataFrame({"athlete": []}))

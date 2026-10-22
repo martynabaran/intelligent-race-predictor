@@ -20,7 +20,7 @@ DataOpt = typer.Option(
 @app.command()
 def sources() -> None:
     """List supported export formats."""
-    from race_predictor.sources import available_sources
+    from race_predictor.services import available_sources
 
     for name in available_sources():
         typer.echo(name)
@@ -38,8 +38,7 @@ def predict(
 ) -> None:
     """Predict 5 km / 10 km / half / marathon times from an export."""
     from race_predictor.domain import RaceMode
-    from race_predictor.predictor import RacePredictor, format_time
-    from race_predictor.sources import load_activities
+    from race_predictor.services import RacePredictor, format_time, load_activities
 
     if mode not in {m.value for m in RaceMode}:
         typer.secho(f"Error: unknown --mode {mode!r} (use road or triathlon)", fg="red", err=True)
@@ -76,11 +75,11 @@ def evaluate(
     with_gru: bool = typer.Option(False, help="Also train the GRU (needs tensorflow, slow)."),
 ) -> None:
     """Compare baseline models under chronological and athlete-grouped evaluation."""
-    from race_predictor.evaluation.runner import compare_models, default_factories, load_dataset
+    from race_predictor.services import compare_baselines
 
-    ds = load_dataset(data)
-    typer.echo(f"{len(ds)} races from {ds.meta['athlete'].nunique()} athletes")
-    typer.echo(compare_models(ds, default_factories(with_gru)).round(2).to_string(index=False))
+    table, n_races, n_athletes = compare_baselines(data, with_gru)
+    typer.echo(f"{n_races} races from {n_athletes} athletes")
+    typer.echo(table.round(2).to_string(index=False))
 
 
 @app.command("app")

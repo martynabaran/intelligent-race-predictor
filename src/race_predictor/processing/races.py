@@ -77,26 +77,34 @@ class HeuristicRaceDetector:
             )
         return out
 
-    def detect(self, df: pd.DataFrame) -> pd.Series:
-        is_run = df["type"] == "Run"
-        cond_hr = df["avg_hr"] > df["hr_max"] * self.hr_threshold
-        cond_dist = df["distance_m"] > 40000
-        cond_speed = df["avg_speed_ms"] > 1.4 * self._rolling_speed(df)
-        tri = df.get("is_triathlon", pd.Series(0, index=df.index)).astype(bool)
-        ratio = df["elapsed_s"] / df["moving_s"].replace(0, np.nan)
-        score = (
-            2 * cond_hr.astype(int)
-            + 2 * cond_dist.astype(int)
-            + 2 * cond_speed.astype(int)
-            + tri.astype(int)
-            + is_standard_distance(df["distance_m"]).astype(int)
+    def reasons(self, df: pd.DataFrame) -> pd.DataFrame:
+        """Each scoring condition per row, the score and the decision (for reviewing labels)."""
+        out = pd.DataFrame(
+            {
+                "high_hr": df["avg_hr"] > df["hr_max"] * self.hr_threshold,
+                "ultra": df["distance_m"] > 40000,
+                "speed_spike": df["avg_speed_ms"] > 1.4 * self._rolling_speed(df),
+                "after_ride": df.get("is_triathlon", pd.Series(0, index=df.index)).astype(bool),
+                "standard_distance": is_standard_distance(df["distance_m"]),
+            },
+            index=df.index,
         )
-        return (
-            is_run
+        out["score"] = (
+            2 * (out["high_hr"].astype(int) + out["ultra"] + out["speed_spike"])
+            + out["after_ride"]
+            + out["standard_distance"]
+        )
+        ratio = df["elapsed_s"] / df["moving_s"].replace(0, np.nan)
+        out["is_race"] = (
+            (df["type"] == "Run")
             & (df["distance_m"] >= self.min_distance_m)
-            & (score >= self.min_score)
+            & (out["score"] >= self.min_score)
             & (ratio <= self.max_time_ratio)
         )
+        return out
+
+    def detect(self, df: pd.DataFrame) -> pd.Series:
+        return self.reasons(df)["is_race"]
 
 
 class DetectRaces(Step):

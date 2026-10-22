@@ -10,8 +10,8 @@ import optuna
 import pandas as pd
 
 from race_predictor.evaluation.runner import compare_models, load_dataset
+from race_predictor.evaluation.tuning import gru_space, histgb_space, nested_evaluate, tune
 from race_predictor.models.baselines import HistGradientBoostingBaseline
-from race_predictor.models.tuning import gru_space, histgb_space, nested_evaluate, tune
 
 
 def main() -> None:

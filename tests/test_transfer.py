@@ -2,10 +2,10 @@ import numpy as np
 import pandas as pd
 import pytest
 
+from race_predictor.evaluation.tuning import histgb_space, nested_evaluate, tune
 from race_predictor.exceptions import DataValidationError
 from race_predictor.features import SHARED_SEQ_FEATURES, build_marathon_data, build_race_dataset
 from race_predictor.models import RidgeBaseline
-from race_predictor.models.tuning import histgb_space, nested_evaluate, tune
 from race_predictor.sources.kaggle import iter_kaggle_chunks, load_marathon_activities
 
 
