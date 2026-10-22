@@ -1,5 +1,7 @@
 # Explainability
 
+> **Note:** computed on the earlier 170-race set, before the manual race review (`REVIEW_RACES.md`); to be recomputed on the reviewed labels in stage 15.
+
 Models are fitted on all races (explaining, not evaluating). Attributions are in s/km of predicted race pace.
 
 ## SHAP - gradient boosting (tabular features)

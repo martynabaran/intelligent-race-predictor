@@ -1,6 +1,7 @@
 """Stage 10: which model for running races (the app's choice) - single models vs nested selection.
 
-Triathlon runs are no longer races (39 of 41 were brick sessions, `docs/REVIEW_RACES.md`), so
+Runs after a ride are not road races to predict (the review in `docs/REVIEW_RACES.md` found most
+of the weakest candidates to be brick sessions, and the real ones are triathlon run legs), so
 there is one mode. The app uses Riegel+correction+ref; `AutoRouter` picks the model inside every
 training fold (inner athlete-grouped CV), so its scores are a nested estimate of "choose the
 best model" without peeking at the test athletes.
@@ -17,6 +18,7 @@ import pandas as pd
 from race_predictor.domain import RaceMode
 from race_predictor.evaluation.breakdown import breakdown
 from race_predictor.evaluation.modes import AutoModeRouter
+from race_predictor.evaluation.report import write_report
 from race_predictor.evaluation.runner import load_dataset, protocol_predictions
 from race_predictor.models import (
     HistGradientBoostingBaseline,
@@ -100,7 +102,8 @@ def main() -> None:
     picks_md = "\n".join(f"- `{mode}`: {counts}" for mode, counts in picks.items())
 
     print(table.to_string(index=False), by_reference.round(2).to_string(), picks_md, sep="\n\n")
-    args.out.write_text(
+    write_report(
+        args.out,
         "# Stage 10: model for running races\n\n"
         f"{len(ds)} running races of {ds.meta['athlete'].nunique()} athletes (runs after a ride "
         "are no longer races, see `REVIEW_RACES.md`). Metrics on total race time; `MedAPE` = "
@@ -120,7 +123,7 @@ def main() -> None:
         + "\n\n"
         f"## What AutoRouter chose ({len(RecordingAutoRouter.choices)} outer fits)\n\n"
         + picks_md
-        + "\n"
+        + "\n",
     )
 
 

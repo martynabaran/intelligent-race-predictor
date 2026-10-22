@@ -1,5 +1,7 @@
 # Embedded models: distillation + TFLite quantisation
 
+> **Note:** computed on the earlier 170-race set, before the manual race review (`REVIEW_RACES.md`); to be recomputed on the reviewed labels in stage 15.
+
 170 races. Teacher: GRU (hybrid, as in Stage 4). Students are trained plainly or distilled (targets = 0.5*true + 0.5*teacher). Accuracy is on total race time with the same two protocols as before; `keras` = float model before export.
 
 ## Accuracy

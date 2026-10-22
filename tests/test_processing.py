@@ -72,9 +72,11 @@ def test_default_pipeline_switches():
         return [type(s).__name__ for s in p.steps]
 
     assert "RemoveImplausiblyFastRuns" in names(default_pipeline())
-    assert "ValidateMaxHeartRate" not in names(default_pipeline())
-    assert "ValidateMaxHeartRate" in names(default_pipeline(hr_spike_filter=True))
-    thesis = names(default_pipeline(fast_run_filter=False, include_triathlon_races=True))
+    assert "ValidateMaxHeartRate" in names(default_pipeline())  # on by default since the review
+    assert "ValidateMaxHeartRate" not in names(default_pipeline(hr_spike_filter=False))
+    thesis = names(
+        default_pipeline(fast_run_filter=False, hr_spike_filter=False, include_triathlon_races=True)
+    )
     assert "RemoveImplausiblyFastRuns" not in thesis and len(thesis) == 6
     assert names(default_pipeline())[-1] == "DropTriathlonRaces"
 
@@ -87,8 +89,8 @@ def test_train_and_predict_share_the_cleaning_steps():
     shared = ["RemoveAnomalies", "RemoveImplausiblyFastRuns"]
     assert train[:2] == shared and predict[:2] == shared
     assert names(default_pipeline()) == train
-    with_spikes = names(cleaning_pipeline("predict", hr_spike_filter=True))
-    assert "ValidateMaxHeartRate" in with_spikes
+    assert train[2] == predict[2] == "ValidateMaxHeartRate"  # shared, and on by default
+    assert "ValidateMaxHeartRate" not in names(cleaning_pipeline("predict", hr_spike_filter=False))
     with pytest.raises(ValueError):
         cleaning_pipeline("serve")
 

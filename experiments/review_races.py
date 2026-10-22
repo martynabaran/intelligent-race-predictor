@@ -38,7 +38,22 @@ def pace(speed_ms: float) -> str:
     return f"{s // 60}:{s % 60:02d}"
 
 
-def table(races: pd.DataFrame, hrmax_before: pd.Series | None = None) -> str:
+def decisions_from(path: Path) -> dict[tuple[str, str, float], str]:
+    """Decisions already recorded in the labels CSV, keyed like the review rows."""
+    if not path.exists():
+        return {}
+    labels = pd.read_csv(path)
+    return {
+        (r.athlete, r.date, round(r.distance_km, 2)): "tak" if r.is_race else "nie"
+        for r in labels.itertuples()
+    }
+
+
+def table(
+    races: pd.DataFrame,
+    hrmax_before: pd.Series | None = None,
+    decisions: dict[tuple[str, str, float], str] | None = None,
+) -> str:
     if races.empty:
         return "_(brak)_\n"
     out = pd.DataFrame(
@@ -55,6 +70,8 @@ def table(races: pd.DataFrame, hrmax_before: pd.Series | None = None) -> str:
             "decyzja (start?)": "",
         }
     )
+    keys = zip(out["athlete"], out["date"], out["km"], strict=True)
+    out["decyzja (start?)"] = [(decisions or {}).get((a, d, k), "") for a, d, k in keys]
     if hrmax_before is not None:
         out.insert(5, "HRmax before", races["athlete"].map(hrmax_before).round(0))
     return out.sort_values(["athlete", "date"]).to_markdown(index=False) + "\n"
@@ -73,7 +90,8 @@ def main() -> None:
         ],
         ignore_index=True,
     )
-    base = labelled(raw, default_pipeline(include_triathlon_races=True))
+    decisions = decisions_from(args.data / "race_labels.csv")
+    base = labelled(raw, default_pipeline(hr_spike_filter=False, include_triathlon_races=True))
     spikes = labelled(raw, default_pipeline(hr_spike_filter=True, include_triathlon_races=True))
 
     only_brick = base[
@@ -104,18 +122,20 @@ def main() -> None:
         "jako etykiet - wykrywa je heurystyka `HeuristicRaceDetector` (punkty: wysokie tętno +2, "
         "skok prędkości vs średnia z roku +2, >40 km +2, bieg po rowerze +1, standardowy dystans +1; "
         "start = co najmniej 2 punkty). Proszę o wpisanie w kolumnie *decyzja* `tak` / `nie` / `?` "
-        "(znasz te dane najlepiej).\n\n"
+        "(znasz te dane najlepiej). Decyzje są zapisane w `data/race_labels.csv` (eksport: "
+        "`experiments/export_race_labels.py`) i wpisywane tu automatycznie.\n\n"
         + summary
         + "\n## A. Tylko „po rowerze” + standardowy dystans (może trening typu brick?)\n\n"
         "Bez wysokiego tętna i bez skoku prędkości. Jeśli to w większości treningi, a nie zawody, "
         "trzeba podnieść próg albo wymagać wysokiego tętna dla biegów po rowerze.\n\n"
-        + table(only_brick)
+        + table(only_brick, decisions=decisions)
         + "\n## B. Dochodzą po filtrze skoków tętna (realne HRmax)\n\n"
         "`HRmax before` = HRmax zawyżone przez skoki czujnika; `HRmax` = po filtrze. Niższe HRmax "
         "obniża próg tętna, więc te biegi zaczynają spełniać warunek wysokiego tętna.\n\n"
-        + table(added, hrmax_before)
+        + table(added, hrmax_before, decisions)
         + "\n## C. Zwykłe starty o niestandardowym dystansie\n\n"
-        "Np. biegi na 7 km, 15 km, trail lub niedokładny GPS. Czy to zawody?\n\n" + table(odd)
+        "Np. biegi na 7 km, 15 km, trail lub niedokładny GPS. Czy to zawody?\n\n"
+        + table(odd, decisions=decisions)
     )
 
 

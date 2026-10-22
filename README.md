@@ -48,27 +48,33 @@ race or a training run. It was the most accurate model on athletes it had not se
 | Error analysis | `evaluation/breakdown.py`, `processing/pipeline.py` | Errors split into stand-alone races, triathlon runs and distances; median APE; filters for a ride logged as a run and HR-sensor spikes → [breakdown](docs/RESULTS_BREAKDOWN.md), [race review](docs/REVIEW_RACES.md) |
 | 8. Clean-up | `processing/cleaning.py`, `services/`, `tests/test_architecture.py` | One cleaning pipeline for training and prediction; UIs use only `services/` (`Prediction` contract); import layering checked by a test |
 | 9. Training load | `training_load/`, `services/load.py`, `app/pages/` | TRIMP per activity (fallback for missing heart rate, flagged); daily fitness / fatigue / form state (CTL, ATL, TSB) with leak-free `state_at`; Banister fit per athlete; load features for race datasets (off by default); *Training load* page in the app. **Negative result:** the features do not improve prediction and the Banister model loses to a running mean → [results](docs/RESULTS_TRAINING_LOAD.md) |
-| 10. Race modes | `models/router.py`, `models/hybrid.py`, `evaluation/modes.py` | Model per race mode (running races only for now; triathlon runs dropped, 39/41 were brick sessions), Riegel+correction hybrid, nested model selection → [modes](docs/RESULTS_MODES.md) |
+| 10. Race modes | `models/router.py`, `models/hybrid.py`, `evaluation/modes.py` | Model per race mode (running races only for now; runs after a ride are not road races to predict), Riegel+correction hybrid, nested model selection → [modes](docs/RESULTS_MODES.md) |
+| 8d. Reviewed race labels | `processing/labels.py`, `data/race_labels.csv` | The manual review of the detector's candidates (122 decisions) applied as data: confirmed races kept, false ones removed, heart-rate spike filter on by default; reports regenerated on the 125 resulting races → [review](docs/REVIEW_RACES.md) |
 
-### Headline findings (MAPE of race time on **unseen athletes**, 129 running races)
+### Headline findings (MAPE of race time on **unseen athletes**, 125 reviewed running races)
 
 | Model | MAPE | median |
 |---|---|---|
-| **Riegel × learned correction, aware of the reference type (used by the app)** | **6.1 %** (nested selection: 6.1 %) | 4.9 % |
-| Riegel × learned correction | 6.5 % | 5.0 % |
-| Riegel formula | 6.6 % | 4.6 % |
-| Ridge regression (previous app model) | 10.7 % | 8.5 % |
-| Gradient boosting | 14.8 % | 14.4 % |
+| **Riegel × learned correction, aware of the reference type (used by the app)** | **6.4 %** (nested selection: 6.4 %) | 4.5 % |
+| Riegel × learned correction | 6.4 % | 5.0 % |
+| Riegel formula | 7.1 % | 4.8 % |
+| Ridge regression (previous app model) | 14.0 % | 13.7 % |
+| Gradient boosting | 14.9 % | 12.1 % |
 
-The race labels mattered more than the model. A quarter of the detected "races" were runs after a ride. 39 of those 41
-were brick training sessions, not races ([review](docs/REVIEW_RACES.md)), so the app now predicts running races only
-([breakdown](docs/RESULTS_BREAKDOWN.md), [modes](docs/RESULTS_MODES.md)). On unseen athletes the Riegel formula is as
-good as anything learned. The learned correction helps on long races (marathon 13.2 → 10.1 %, 8 races). Riegel itself
-is only as good as its reference run: 5.7 % when it projects from a previous race, 8.4 % from a training run. For athletes already in the
-training data, learned models win (Ridge 7.8 % vs Riegel 9.5 %, chronological protocol).
+The race labels mattered more than the model. The detector's candidates were checked by hand
+([review](docs/REVIEW_RACES.md)): it was right only about half the time on its weakest cases. After
+removing its false races, adding the 33 real ones it misses without the heart-rate spike filter, and
+leaving runs after a ride out of the road races, the Riegel-based models are stable (6.1 → 6.4 % for the
+app model) while the learned tabular models are much worse on new athletes (Ridge 10.7 → 14.0 %). On
+unseen athletes the Riegel formula is as good as anything learned; the learned correction helps on
+long races (marathon 13.2 → 10.3 %, 8 races). Riegel itself is only as good as its reference run:
+6.1 % when it projects from a previous race, 8.3 % from a training run. Even for athletes already in
+the training data no learned model beats Riegel (chronological protocol: 7.5 % vs 7.7 % for the app
+model).
 
-> Results of stages 3–5 (sequence models, distillation, transfer) were computed on the earlier 170-race set that still
-> contained the brick sessions; they will be recomputed in stage 15.
+> The reports for stages 3–5 (sequence models, distillation, transfer, tuning, explanations) were
+> computed on the earlier unreviewed race sets. Only the baselines, breakdown, modes and
+> training-load reports were regenerated on the reviewed labels; the others are recomputed in stage 15.
 
 Methodological notes (grouped CV by athlete, nested tuning, seed variance) are in the results files.
 

@@ -1,5 +1,7 @@
 # Sequence architectures: GRU vs TCN vs Transformer
 
+> **Note:** computed on the earlier 170-race set, before the manual race review (`REVIEW_RACES.md`); to be recomputed on the reviewed labels in stage 15.
+
 170 races, 14 athletes; identical hybrid layout (encoder + static branch), mean over 3 seeds (`MAPE_std` = std of MAPE across seeds). Metrics on total race time. With so few races, differences smaller than `MAPE_std` should not be over-interpreted.
 
 | model       | protocol      |   MAE_time_min |   RMSE_time_min |   MAPE_% |   MAE_pace_s_km |   fit_s |   MAPE_std |

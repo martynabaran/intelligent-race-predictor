@@ -19,11 +19,12 @@ from race_predictor.models import (
     RiegelBaseline,
 )
 from race_predictor.models.base import RaceModel
-from race_predictor.processing import Pipeline, cleaning_pipeline
+from race_predictor.processing import Pipeline, cleaning_pipeline, load_race_labels
 from race_predictor.sources import load_directory
 from race_predictor.utils import timer
 
 ModelFactory = Callable[[], RaceModel]
+LABELS_FILE = "race_labels.csv"
 
 
 def _score(ds: RaceDataset, pred: np.ndarray, index: np.ndarray) -> dict[str, float]:
@@ -89,15 +90,26 @@ def default_factories(with_gru: bool = False) -> dict[str, ModelFactory]:
     return factories
 
 
-def load_dataset(data_dir: Path, pipeline: Pipeline | None = None) -> RaceDataset:
-    """Races from the Strava + Garmin exports; ``pipeline`` defaults to
-    ``cleaning_pipeline("train")``."""
+def load_cleaned(data_dir: Path, pipeline: Pipeline | None = None) -> pd.DataFrame:
+    """Cleaned activities of the Strava + Garmin exports in ``data_dir``.
+
+    ``pipeline`` defaults to ``cleaning_pipeline("train")`` with the hand-labelled races of
+    ``data_dir/race_labels.csv`` when that file exists (see ``processing.labels``).
+    """
     frames = [
         load_directory(data_dir / "strava_activities"),
         load_directory(data_dir / "garmin_activities"),
     ]
-    pipeline = pipeline or cleaning_pipeline("train")
-    return build_race_dataset(pipeline.run(pd.concat(frames, ignore_index=True)))
+    if pipeline is None:
+        labels_path = data_dir / LABELS_FILE
+        labels = load_race_labels(labels_path) if labels_path.exists() else None
+        pipeline = cleaning_pipeline("train", race_labels=labels)
+    return pipeline.run(pd.concat(frames, ignore_index=True))
+
+
+def load_dataset(data_dir: Path, pipeline: Pipeline | None = None) -> RaceDataset:
+    """Races from the Strava + Garmin exports (cleaning as in :func:`load_cleaned`)."""
+    return build_race_dataset(load_cleaned(data_dir, pipeline))
 
 
 def main() -> None:

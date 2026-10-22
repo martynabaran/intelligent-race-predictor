@@ -3,7 +3,7 @@
     python experiments/run_training_load.py
 
 Writes docs/RESULTS_TRAINING_LOAD.md. All numbers come from this script; the *Conclusions*
-section is edited by hand after reading them.
+section is edited by hand after reading them (and kept when the script is rerun).
 """
 
 import argparse
@@ -12,6 +12,8 @@ from pathlib import Path
 import pandas as pd
 
 from race_predictor.evaluation.breakdown import segment_masks
+from race_predictor.evaluation.report import write_report
+from race_predictor.evaluation.runner import load_cleaned
 from race_predictor.evaluation.training_load import (
     banister_report,
     load_feature_comparison,
@@ -24,12 +26,9 @@ from race_predictor.models import (
     RidgeBaseline,
     RiegelBaseline,
 )
-from race_predictor.processing import cleaning_pipeline
-from race_predictor.sources import load_directory
 from race_predictor.training_load import LOAD_FEATURES
 
 SEGMENTS = ["all", "stand-alone", "triathlon"]
-CONCLUSIONS_MARKER = "## Conclusions"
 
 
 def main() -> None:
@@ -38,11 +37,7 @@ def main() -> None:
     ap.add_argument("--out", type=Path, default=Path("docs/RESULTS_TRAINING_LOAD.md"))
     args = ap.parse_args()
 
-    frames = [
-        load_directory(args.data / "strava_activities"),
-        load_directory(args.data / "garmin_activities"),
-    ]
-    cleaned = cleaning_pipeline("train").run(pd.concat(frames, ignore_index=True))
+    cleaned = load_cleaned(args.data)
     ds = build_race_dataset(cleaned)
     print(f"{len(ds)} races, {ds.meta['athlete'].nunique()} athletes", flush=True)
 
@@ -54,16 +49,19 @@ def main() -> None:
     }
     long, predictions = load_feature_comparison(ds, factories)
 
-    scores = long[long["segment"].isin(SEGMENTS)].pivot_table(
+    # With running races only there may be no triathlon runs at all: use the segments present.
+    masks = segment_masks(ds)
+    segments = [s for s in SEGMENTS if masks[s].any()]
+    scores = long[long["segment"].isin(segments)].pivot_table(
         index=["protocol", "model", "load"], columns="segment", values="MAPE_%", sort=False
-    )[SEGMENTS]
-    scores.columns = [f"MAPE_% {s}" for s in SEGMENTS]
+    )[segments]
+    scores.columns = [f"MAPE_% {s}" for s in segments]
 
-    masks, rows = segment_masks(ds), []
+    rows = []
     for (model, protocol), (without, with_load, index) in predictions.items():
         if protocol != "grouped-CV" or model.startswith("Riegel"):
             continue
-        for segment in SEGMENTS:
+        for segment in segments:
             mask = None if segment == "all" else masks[segment]
             rows.append(
                 {
@@ -105,13 +103,7 @@ def main() -> None:
         f"{summary['full_fits_at_bound']:.0f} of {summary['full_fits']:.0f} full fits have a "
         "time constant at a bound.\n\n"
     )
-    existing = args.out.read_text() if args.out.exists() else ""
-    kept = (
-        existing[existing.index(CONCLUSIONS_MARKER) :]
-        if CONCLUSIONS_MARKER in existing
-        else (f"{CONCLUSIONS_MARKER}\n\n(to be written after reading the tables above)\n")
-    )
-    args.out.write_text(text + kept)
+    write_report(args.out, text)
     print(text)
 
 
