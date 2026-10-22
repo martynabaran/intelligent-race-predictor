@@ -18,13 +18,14 @@ LAYERS = {
     "utils": 0,
     "sources": 1,
     "processing": 2,
-    "features": 3,
-    "models": 4,
-    "evaluation": 5,
-    "services": 6,
-    "predictor": 7,  # backward-compatible alias of services
-    "app": 7,
-    "cli": 7,
+    "training_load": 3,
+    "features": 4,
+    "models": 5,
+    "evaluation": 6,
+    "services": 7,
+    "predictor": 8,  # backward-compatible alias of services
+    "app": 8,
+    "cli": 8,
 }
 INTERFACES = {"app", "cli"}
 INTERFACE_ALLOWED = {"services", "domain", "exceptions"}
