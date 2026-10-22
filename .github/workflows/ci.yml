@@ -12,6 +12,7 @@ jobs:
       - run: pip install -e ".[dev,app]"
       - run: ruff check .
       - run: ruff format --check .
+      - run: mypy
       - run: pytest -q
   deep:
     # TensorFlow-dependent tests (sequence models, transfer, TFLite) run separately.
