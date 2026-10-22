@@ -102,6 +102,7 @@ def main() -> None:
         else:
             st.info("Upload an export (or pick a sample) in the sidebar to get started.")
             return
+        st.session_state["activities"] = activities  # shared with the Training load page
         table = predictor.predict(activities, elevation_gain_m=float(elevation), mode=mode)
     except RacePredictorError as e:
         st.error(str(e))

@@ -7,12 +7,13 @@ Target: race pace in seconds per km.
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 
 import numpy as np
 import pandas as pd
 
 from race_predictor.domain import RaceMode
+from race_predictor.training_load import LOAD_FEATURES, load_features, load_state
 
 SEQ_FEATURES = [
     "days_to_race",
@@ -63,6 +64,9 @@ class RaceDataset:
     static: pd.DataFrame  # STATIC_NUMERIC + STATIC_BINARY + AGGREGATES + riegel reference
     y: np.ndarray  # race pace [s/km]
     meta: pd.DataFrame  # athlete, race_date, race_distance_m
+    # Training-load columns (LOAD_FEATURES) are always in ``static``; models see them through
+    # ``tabular_columns`` only when this is set, so earlier results stay comparable.
+    include_load: bool = False
 
     def __len__(self) -> int:
         return len(self.y)
@@ -74,7 +78,16 @@ class RaceDataset:
             self.static.iloc[idx].reset_index(drop=True),
             self.y[idx],
             self.meta.iloc[idx].reset_index(drop=True),
+            self.include_load,
         )
+
+    def with_load(self, enabled: bool = True) -> RaceDataset:
+        """Same data; ``tabular_columns`` includes the training-load features iff ``enabled``."""
+        return replace(self, include_load=enabled)
+
+    def with_targets(self, y: np.ndarray) -> RaceDataset:
+        """Same features and settings with different targets (e.g. blended for distillation)."""
+        return replace(self, y=y)
 
     def shared_seqs(self) -> list[np.ndarray]:
         idx = [SEQ_FEATURES.index(f) for f in SHARED_SEQ_FEATURES]
@@ -82,7 +95,8 @@ class RaceDataset:
 
     @property
     def tabular_columns(self) -> list[str]:
-        return STATIC_NUMERIC + STATIC_BINARY + AGGREGATES
+        columns = STATIC_NUMERIC + STATIC_BINARY + AGGREGATES
+        return columns + LOAD_FEATURES if self.include_load else columns
 
     @property
     def race_time_s(self) -> np.ndarray:
@@ -181,6 +195,7 @@ def build_race_dataset(df: pd.DataFrame, days_window: int = 365, min_runs: int =
     for athlete, sub in df.groupby("athlete"):
         runs = sub[sub["type"] == "Run"]
         years_exp = _years_of_experience(runs)
+        state = load_state(sub)  # causal: a race only sees the days before it (state_at)
 
         for _, race in runs[runs["is_race"]].iterrows():
             moving = race["moving_s"] if pd.notna(race["moving_s"]) else race["elapsed_s"]
@@ -199,7 +214,7 @@ def build_race_dataset(df: pd.DataFrame, days_window: int = 365, min_runs: int =
             )
             if example is None:
                 continue
-            statics.append(example[0])
+            statics.append({**example[0], **load_features(state, race["date"])})
             seqs.append(example[1])
             ys.append(float(moving) / (race["distance_m"] / 1000.0))
             metas.append(
@@ -235,6 +250,10 @@ def build_query_dataset(
     race_date = race_date if race_date is not None else df["date"].max() + pd.Timedelta(days=1)
     runs = df[df["type"] == "Run"]
     years_exp = _years_of_experience(runs[runs["date"] < race_date])
+    before = df[df["date"] < race_date]  # the load state may only see the past
+    if before.empty:
+        return None
+    state = load_state(before, end=race_date - pd.Timedelta(days=1))
     seqs, statics, metas = [], [], []
     for d in distances_m:
         example = _example(
@@ -242,7 +261,7 @@ def build_query_dataset(
         )
         if example is None:
             return None
-        statics.append(example[0])
+        statics.append({**example[0], **load_features(state, race_date)})
         seqs.append(example[1])
         metas.append(
             {"athlete": str(df["athlete"].iloc[0]), "race_date": race_date, "race_distance_m": d}

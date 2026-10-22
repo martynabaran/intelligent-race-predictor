@@ -151,9 +151,7 @@ def measure_deployment(
 
     for spec in students:
         for a, label in ((1.0, "plain"), (alpha, "distilled")):
-            student = spec.factory().fit(
-                RaceDataset(ds.seqs, ds.static, a * ds.y + (1 - a) * teacher.predict(ds), ds.meta)
-            )
+            student = spec.factory().fit(ds.with_targets(a * ds.y + (1 - a) * teacher.predict(ds)))
             for mode in spec.modes:
                 blob = convert_to_tflite(student.model_, mode, student.inputs(ds))
                 m = TFLiteModel(blob)

@@ -6,6 +6,7 @@ features and data processing can change without touching the interfaces. Enforce
 """
 
 from race_predictor.services.catalog import available_sources, compare_baselines, load_activities
+from race_predictor.services.load import LoadSummary, form_label, training_load
 from race_predictor.services.prediction import (
     DISTANCES_M,
     PREDICTION_COLUMNS,
@@ -17,12 +18,15 @@ from race_predictor.services.prediction import (
 
 __all__ = [
     "DISTANCES_M",
+    "LoadSummary",
     "PREDICTION_COLUMNS",
     "Prediction",
     "RacePredictor",
     "available_sources",
     "compare_baselines",
+    "form_label",
     "format_time",
     "load_activities",
     "prepare_activities",
+    "training_load",
 ]
