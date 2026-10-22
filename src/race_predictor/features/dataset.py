@@ -125,13 +125,18 @@ def _aggregates(window: pd.DataFrame, race_date: pd.Timestamp, days_window: int)
     }
 
 
-def _riegel_reference(window: pd.DataFrame) -> tuple[float, float]:
-    """Fastest-pace run of >=5 km in the window -> (distance_m, time_s); NaNs if none."""
+def _riegel_reference(window: pd.DataFrame) -> tuple[float, float, float]:
+    """Fastest-pace run of >=5 km in the window -> (distance_m, time_s, is_race); NaNs if none.
+
+    ``is_race`` (1/0) says whether that run was itself a detected race - Riegel is meant to
+    project a race result, not a training run. NaN when races are unknown (e.g. a user's export).
+    """
     cand = window[(window["distance_m"] >= 5000) & (window["avg_speed_ms"] > 0)]
     if cand.empty:
-        return np.nan, np.nan
+        return np.nan, np.nan, np.nan
     best = cand.loc[cand["avg_speed_ms"].idxmax()]
-    return float(best["distance_m"]), float(best["distance_m"] / best["avg_speed_ms"])
+    is_race = float(bool(best["is_race"])) if "is_race" in best.index else np.nan
+    return float(best["distance_m"]), float(best["distance_m"] / best["avg_speed_ms"]), is_race
 
 
 def _example(
@@ -156,7 +161,7 @@ def _example(
     window["days_to_race"] = (race_date - window["date"]).dt.days
     others = sub[(sub["type"] != "Run") & (sub["date"] >= start) & (sub["date"] <= race_date)]
     swim, bike, gym = (others[others["type"] == t] for t in ("Swim", "Ride", "Weight Training"))
-    ref_d, ref_t = _riegel_reference(window)
+    ref_d, ref_t, ref_is_race = _riegel_reference(window)
     static = {
         "years_of_experience": years_exp,
         "swim_t_total": _sum(swim, "elapsed_s"),
@@ -173,6 +178,7 @@ def _example(
         **_aggregates(window, race_date, days_window),
         "riegel_ref_distance_m": ref_d,
         "riegel_ref_time_s": ref_t,
+        "riegel_ref_is_race": ref_is_race,
     }
     return static, window[SEQ_FEATURES].to_numpy(dtype=np.float32)
 
@@ -237,9 +243,9 @@ def build_query_dataset(
 
     Default ``race_date`` is the day after the last activity ("a race today"). The target ``y`` is
     a placeholder (zeros). Returns ``None`` when the history before ``race_date`` is too short.
-    ``mode`` sets ``is_triathlon`` (a road race by default).
+    ``mode`` is the kind of race (only road races for now, so ``is_triathlon`` is 0).
     """
-    is_tri = float(RaceMode(mode) is RaceMode.TRIATHLON)
+    is_tri = 0.0 if RaceMode(mode) is RaceMode.ROAD else 1.0
     df = df.sort_values("date")
     race_date = race_date if race_date is not None else df["date"].max() + pd.Timedelta(days=1)
     runs = df[df["type"] == "Run"]

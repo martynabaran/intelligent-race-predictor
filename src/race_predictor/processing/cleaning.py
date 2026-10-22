@@ -6,8 +6,11 @@ one of them and the model saw differently cleaned data in the app than in traini
 from :func:`cleaning_pipeline`: the shared steps are identical, and only what has to differ does.
 
 * ``train``: drop athletes without heart rate, then add ``hr_max``, ``is_triathlon``, ``is_race``
-  (race detection needs heart rate).
-* ``predict``: keep rows without heart rate (users may not wear a strap) and impute gaps.
+  (race detection needs heart rate). Runs after a ride are not races (``DropTriathlonRaces``)
+  unless ``include_triathlon_races`` - only the error analysis needs them.
+* ``predict``: keep rows without heart rate (users may not wear a strap), detect races with the
+  same detector (needed to know whether Riegel's reference run was a race) and impute gaps after
+  detection, so imputed heart rates never count as race efforts.
 """
 
 from __future__ import annotations
@@ -16,6 +19,7 @@ from typing import Literal
 
 from race_predictor.processing.pipeline import (
     DropAthletesWithoutHR,
+    DropTriathlonRaces,
     EstimateHRMax,
     ImputeMissing,
     MarkTriathlonRuns,
@@ -45,6 +49,7 @@ def cleaning_pipeline(
     detector=None,
     fast_run_filter: bool = True,
     hr_spike_filter: bool = False,
+    include_triathlon_races: bool = False,
 ) -> Pipeline:
     """Cleaning chain for ``purpose``.
 
@@ -52,28 +57,32 @@ def cleaning_pipeline(
     are unchanged. ``hr_spike_filter`` (``ValidateMaxHeartRate``) lowers inflated HRmax, which makes
     the HR-based race detector find more races; it is off until those races are validated.
     """
-    shared = shared_steps(fast_run_filter, hr_spike_filter)
-    if purpose == "predict":
-        return Pipeline([*shared, ValidateHeartRate(keep_missing=True), ImputeMissing()])
-    if purpose != "train":
+    if purpose not in ("train", "predict"):
         raise ValueError("purpose must be 'train' or 'predict'")
     from race_predictor.processing.races import DetectRaces
 
-    return Pipeline(
-        [
-            *shared,
-            ValidateHeartRate(),
-            DropAthletesWithoutHR(),
-            EstimateHRMax(),
-            MarkTriathlonRuns(),
-            DetectRaces(detector),
-        ]
-    )
+    labelling = [
+        EstimateHRMax(),
+        MarkTriathlonRuns(),
+        DetectRaces(detector),
+        *([] if include_triathlon_races else [DropTriathlonRaces()]),
+    ]
+    shared = shared_steps(fast_run_filter, hr_spike_filter)
+    if purpose == "predict":
+        return Pipeline(
+            [*shared, ValidateHeartRate(keep_missing=True), *labelling, ImputeMissing()]
+        )
+    return Pipeline([*shared, ValidateHeartRate(), DropAthletesWithoutHR(), *labelling])
 
 
 def default_pipeline(
-    detector=None, fast_run_filter: bool = True, hr_spike_filter: bool = False
+    detector=None,
+    fast_run_filter: bool = True,
+    hr_spike_filter: bool = False,
+    include_triathlon_races: bool = False,
 ) -> Pipeline:
-    """Training chain (thesis chain + data-quality steps). Both filters ``False`` reproduces the
+    """Training chain. ``fast_run_filter=False, include_triathlon_races=True`` reproduces the
     thesis chain exactly. Same as ``cleaning_pipeline("train", ...)``."""
-    return cleaning_pipeline("train", detector, fast_run_filter, hr_spike_filter)
+    return cleaning_pipeline(
+        "train", detector, fast_run_filter, hr_spike_filter, include_triathlon_races
+    )

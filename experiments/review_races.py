@@ -73,8 +73,8 @@ def main() -> None:
         ],
         ignore_index=True,
     )
-    base = labelled(raw, default_pipeline())
-    spikes = labelled(raw, default_pipeline(hr_spike_filter=True))
+    base = labelled(raw, default_pipeline(include_triathlon_races=True))
+    spikes = labelled(raw, default_pipeline(hr_spike_filter=True, include_triathlon_races=True))
 
     only_brick = base[
         base["after_ride"]

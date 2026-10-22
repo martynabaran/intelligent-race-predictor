@@ -23,6 +23,10 @@ def segment_masks(ds: RaceDataset) -> dict[str, np.ndarray]:
     masks = {"all": np.ones(len(ds), dtype=bool), "stand-alone": ~tri, "triathlon": tri}
     for label in dict.fromkeys(labels):
         masks[f"{label} (stand-alone)"] = (labels == label) & ~tri
+    if "riegel_ref_is_race" in ds.static:  # what Riegel projects from: a race or a training run
+        ref = ds.static["riegel_ref_is_race"].to_numpy()
+        masks["reference: race"] = ref == 1
+        masks["reference: training run"] = ref == 0
     return masks
 
 

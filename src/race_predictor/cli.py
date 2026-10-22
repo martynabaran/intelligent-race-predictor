@@ -34,15 +34,10 @@ def predict(
     data: Path = DataOpt,
     elevation: float = typer.Option(0.0, help="Race elevation gain in metres."),
     race_date: str = typer.Option(None, help="YYYY-MM-DD (default: day after the last activity)."),
-    mode: str = typer.Option("road", help="Race type: road or triathlon (run leg)."),
 ) -> None:
     """Predict 5 km / 10 km / half / marathon times from an export."""
-    from race_predictor.domain import RaceMode
     from race_predictor.services import RacePredictor, format_time, load_activities
 
-    if mode not in {m.value for m in RaceMode}:
-        typer.secho(f"Error: unknown --mode {mode!r} (use road or triathlon)", fg="red", err=True)
-        raise typer.Exit(1)
     try:
         activities = load_activities(export)
         predictor = RacePredictor.from_data_dir(data)
@@ -50,7 +45,6 @@ def predict(
             activities,
             race_date=pd.Timestamp(race_date) if race_date else None,
             elevation_gain_m=elevation,
-            mode=RaceMode(mode),
         )
     except RacePredictorError as e:
         typer.secho(f"Error: {e}", fg=typer.colors.RED, err=True)
@@ -63,9 +57,9 @@ def predict(
             f"{r.distance:<15}{format_time(r.time_s):>10}{rng:>22}{format_time(r.riegel_s):>10}"
         )
     typer.echo(
-        f"\nModel: {predictor.model_name(RaceMode(mode))}, trained on {predictor.n_train_races_} "
-        f"races of {predictor.n_train_athletes_} athletes; the range is the empirical 10-90% "
-        "error of this race type on unseen athletes."
+        f"\nModel: {predictor.model_name()}, trained on {predictor.n_train_races_} running races "
+        f"of {predictor.n_train_athletes_} athletes; the range is the empirical 10-90% error on "
+        "unseen athletes."
     )
 
 

@@ -100,8 +100,8 @@ def test_predictor_end_to_end(frame):
     assert t_slow["riegel_s"].notna().all()
 
     query = build_query_dataset(prepare_activities(slow), [10000.0])
-    contrib = predictor.explain(slow, 10000.0)  # road race -> Riegel
-    assert predictor.model_name() == "Riegel" and "best_run_pace" in contrib.index
+    contrib = predictor.explain(slow, 10000.0)  # road race -> Riegel + learned correction
+    assert predictor.model_name() == "Riegel+correction+ref" and "best_run_pace" in contrib.index
     assert contrib.sum() == pytest.approx(predictor._pace(query)[0], rel=1e-6)
     ref = predictor.reference_run(slow)
     assert ref["pace_s_km"] == pytest.approx(contrib["best_run_pace"])
@@ -113,6 +113,33 @@ def test_predictor_rejects_short_history(frame):
     predictor = RacePredictor(n_splits=3).fit(build_race_dataset(synthetic_training(frame)))
     with pytest.raises(DataValidationError):
         predictor.predict(make_athlete(frame, n=2))
+
+
+def test_prediction_knows_whether_reference_run_was_a_race(frame):
+    predictor = RacePredictor(n_splits=3).fit(build_race_dataset(synthetic_training(frame)))
+    easy = make_athlete(frame)  # steady training, no race efforts
+    raced = pd.concat(
+        [
+            easy,
+            frame(
+                [
+                    dict(
+                        athlete="u",
+                        date=pd.Timestamp("2024-06-01"),
+                        distance_m=10000.0,
+                        avg_speed_ms=3.6,
+                        moving_s=10000 / 3.6,
+                        avg_hr=175.0,
+                    )
+                ]
+            ),
+        ],
+        ignore_index=True,
+    )
+    assert not prepare_activities(easy)["is_race"].any()
+    assert prepare_activities(raced)["is_race"].sum() == 1  # detected in the user's own export
+    assert predictor.reference_run(easy)["is_race"] is False
+    assert predictor.reference_run(raced)["is_race"] is True
 
 
 def test_prepare_activities_keeps_rows_without_heart_rate(frame):
@@ -160,32 +187,9 @@ def test_streamlit_app_renders_sample(monkeypatch):
     assert len(at.metric) == 4 and at.metric[3].label == "Marathon"
     assert any("fastest run" in m.value for m in at.markdown)  # road race -> Riegel explanation
 
-    at.sidebar.radio[0].set_value("Triathlon (run leg)").run()
-    assert not at.exception, at.exception
-    assert any("ridge regression" in c.value for c in at.sidebar.caption)
-
-
-def test_predictor_triathlon_mode(frame):
-    train = build_race_dataset(synthetic_training(frame))
-    predictor = RacePredictor(n_splits=3).fit(train)
-    athlete = make_athlete(frame)
-    road = predictor.predict(athlete)
-    tri = predictor.predict(athlete, mode=RaceMode.TRIATHLON)
-    assert predictor.model_name(RaceMode.TRIATHLON) == "Ridge"
-    assert not np.allclose(road["time_s"], tri["time_s"])  # different model per mode
-    contrib = predictor.explain(athlete, 10000.0, mode=RaceMode.TRIATHLON)
-    query = build_query_dataset(prepare_activities(athlete), [10000.0], mode=RaceMode.TRIATHLON)
-    assert query.static["is_triathlon"].iloc[0] == 1
-    assert contrib.sum() == pytest.approx(predictor._pace(query)[0], rel=1e-6)
-    # no triathlons in the training data -> the pooled interval is used
-    assert predictor.ratios_[RaceMode.TRIATHLON] == predictor.ratios_[RaceMode.ROAD]
-
-
-def test_cli_rejects_unknown_mode(tmp_path):
-    export = tmp_path / "x.csv"
-    export.write_text("a,b\n1,2\n")
-    result = runner.invoke(app, ["predict", str(export), "--mode", "trail"])
-    assert result.exit_code == 1 and "unknown --mode" in result.output
+    assert any("learned correction" in c.value for c in at.sidebar.caption)
+    assert any("Learned correction" in m.value for m in at.markdown)
+    assert not at.sidebar.radio  # no race-type choice: running races only
 
 
 def test_prediction_contract(frame):
@@ -196,9 +200,10 @@ def test_prediction_contract(frame):
     assert alias.RacePredictor is Service  # old import path still works
     p = Service(n_splits=3).fit(build_race_dataset(synthetic_training(frame)))
     athlete = make_athlete(frame)
-    items = p.predictions(athlete, mode=RaceMode.TRIATHLON)
+    items = p.predictions(athlete)
     assert all(isinstance(i, Prediction) for i in items) and len(items) == 4
-    assert items[0].mode is RaceMode.TRIATHLON and items[0].model == "Ridge"
+    assert items[0].mode is RaceMode.ROAD and items[0].model == "Riegel+correction+ref"
     table = p.predict(athlete)
     assert list(table.columns) == PREDICTION_COLUMNS
-    assert table["mode"].eq(RaceMode.ROAD).all() and table["model"].eq("Riegel").all()
+    assert table["mode"].eq(RaceMode.ROAD).all()
+    assert table["model"].eq("Riegel+correction+ref").all()

@@ -66,3 +66,7 @@
    Removing them lowers the HR threshold of the race detector, which then finds 33 more races. Because the race set
    changes, these metrics are not comparable to the other two pipelines. The filter stays off until the extra races
    are checked.
+7. **Outcome.** The review lists (`REVIEW_RACES.md`) showed that 39 of the 41 triathlon "races" are detected only
+   because they follow a ride and have a standard distance. They are most likely brick training sessions. Runs after a
+   ride are therefore no longer races (`DropTriathlonRaces`, default), and the app predicts running races only (see
+   `RESULTS_MODES.md`). This report keeps them (`include_triathlon_races=True`) because it documents the analysis.

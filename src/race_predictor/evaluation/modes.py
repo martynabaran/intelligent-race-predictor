@@ -31,6 +31,7 @@ CANDIDATES: dict[str, Callable[[], RaceModel]] = {
     "Ridge": RidgeBaseline,
     "HistGB": HistGradientBoostingBaseline,
     "Riegel+correction": RiegelCorrected,
+    "Riegel+correction+ref": lambda: RiegelCorrected(use_reference_type=True),
 }
 
 

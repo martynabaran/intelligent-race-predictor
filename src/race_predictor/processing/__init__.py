@@ -1,6 +1,7 @@
 from race_predictor.processing.cleaning import cleaning_pipeline, default_pipeline, shared_steps
 from race_predictor.processing.pipeline import (
     DropAthletesWithoutHR,
+    DropTriathlonRaces,
     EstimateHRMax,
     ImputeMissing,
     MarkTriathlonRuns,
@@ -22,6 +23,7 @@ from race_predictor.processing.windows import training_windows
 __all__ = [
     "DetectRaces",
     "DropAthletesWithoutHR",
+    "DropTriathlonRaces",
     "EstimateHRMax",
     "HeuristicRaceDetector",
     "ImputeMissing",

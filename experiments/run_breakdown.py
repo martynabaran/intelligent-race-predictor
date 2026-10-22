@@ -15,6 +15,9 @@ from race_predictor.evaluation.breakdown import breakdown
 from race_predictor.evaluation.runner import default_factories, load_dataset, protocol_predictions
 from race_predictor.processing import default_pipeline
 
+# This analysis is what led to dropping triathlon runs, so it keeps them.
+TRI = {"include_triathlon_races": True}
+
 
 def describe(ds) -> dict:
     tri = int(ds.static["is_triathlon"].sum())
@@ -35,9 +38,9 @@ def main() -> None:
     # "fast-run filter" keeps the thesis race set (the removed run was not a race), so it is the
     # like-for-like comparison; the HR-spike filter lowers HRmax and so changes which races exist.
     datasets = {
-        "thesis": load_dataset(args.data, default_pipeline(fast_run_filter=False)),
-        "fast-run filter": load_dataset(args.data, default_pipeline()),
-        "+ HR-spike filter": load_dataset(args.data, default_pipeline(hr_spike_filter=True)),
+        "thesis": load_dataset(args.data, default_pipeline(fast_run_filter=False, **TRI)),
+        "fast-run filter": load_dataset(args.data, default_pipeline(**TRI)),
+        "+ HR-spike filter": load_dataset(args.data, default_pipeline(hr_spike_filter=True, **TRI)),
     }
     sizes = pd.DataFrame({k: describe(v) for k, v in datasets.items()}).T
 
