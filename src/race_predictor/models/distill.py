@@ -44,9 +44,7 @@ class Distilled(RaceModel):
 
     def fit(self, ds: RaceDataset) -> Distilled:
         soft = self.teacher(ds).predict(ds)
-        blended = RaceDataset(
-            ds.seqs, ds.static, self.alpha * ds.y + (1 - self.alpha) * soft, ds.meta
-        )
+        blended = ds.with_targets(self.alpha * ds.y + (1 - self.alpha) * soft)
         self.student_ = self.student_factory().fit(blended)
         return self
 
