@@ -18,12 +18,12 @@ needs_data = pytest.mark.skipif(not DATA.exists(), reason="sample data not prese
 
 def make_athlete(frame, speed=3.2, n=40, athlete="u"):
     rows = [
-        dict(
-            athlete=athlete,
-            date=pd.Timestamp("2024-01-01") + pd.Timedelta(days=5 * i),
-            distance_m=8000.0 + 100 * (i % 5),
-            avg_speed_ms=speed,
-        )
+        {
+            "athlete": athlete,
+            "date": pd.Timestamp("2024-01-01") + pd.Timedelta(days=5 * i),
+            "distance_m": 8000.0 + 100 * (i % 5),
+            "avg_speed_ms": speed,
+        }
         for i in range(n)
     ]
     return frame(rows)
@@ -35,26 +35,26 @@ def synthetic_training(frame) -> pd.DataFrame:
         start = pd.Timestamp("2023-01-01")
         for i in range(30):
             rows.append(
-                dict(
-                    athlete=a,
-                    date=start + pd.Timedelta(days=7 * i),
-                    distance_m=8000.0,
-                    avg_speed_ms=speed,
-                    is_race=False,
-                    is_triathlon=0,
-                )
+                {
+                    "athlete": a,
+                    "date": start + pd.Timedelta(days=7 * i),
+                    "distance_m": 8000.0,
+                    "avg_speed_ms": speed,
+                    "is_race": False,
+                    "is_triathlon": 0,
+                }
             )
         for j in range(4):
             rows.append(
-                dict(
-                    athlete=a,
-                    date=start + pd.Timedelta(days=215 + 28 * j),
-                    distance_m=10000.0,
-                    avg_speed_ms=speed * 1.1,
-                    moving_s=10000 / (speed * 1.1),
-                    is_race=True,
-                    is_triathlon=0,
-                )
+                {
+                    "athlete": a,
+                    "date": start + pd.Timedelta(days=215 + 28 * j),
+                    "distance_m": 10000.0,
+                    "avg_speed_ms": speed * 1.1,
+                    "moving_s": 10000 / (speed * 1.1),
+                    "is_race": True,
+                    "is_triathlon": 0,
+                }
             )
     return frame(rows)
 
@@ -123,14 +123,14 @@ def test_prediction_knows_whether_reference_run_was_a_race(frame):
             easy,
             frame(
                 [
-                    dict(
-                        athlete="u",
-                        date=pd.Timestamp("2024-06-01"),
-                        distance_m=10000.0,
-                        avg_speed_ms=3.6,
-                        moving_s=10000 / 3.6,
-                        avg_hr=175.0,
-                    )
+                    {
+                        "athlete": "u",
+                        "date": pd.Timestamp("2024-06-01"),
+                        "distance_m": 10000.0,
+                        "avg_speed_ms": 3.6,
+                        "moving_s": 10000 / 3.6,
+                        "avg_hr": 175.0,
+                    }
                 ]
             ),
         ],

@@ -18,22 +18,22 @@ def kaggle_frame(n_athletes=6, seed=0) -> pd.DataFrame:
         for w in range(40):
             d = float(rng.uniform(6, 16))
             rows.append(
-                dict(
-                    athlete=a,
-                    datetime=pd.Timestamp("2019-04-28") - pd.Timedelta(days=7 * (w + 1)),
-                    distance=d,
-                    duration=d * speed_min_km * 1.03,
-                    major="LONDON 2019",
-                )
+                {
+                    "athlete": a,
+                    "datetime": pd.Timestamp("2019-04-28") - pd.Timedelta(days=7 * (w + 1)),
+                    "distance": d,
+                    "duration": d * speed_min_km * 1.03,
+                    "major": "LONDON 2019",
+                }
             )
         rows.append(
-            dict(
-                athlete=a,
-                datetime=pd.Timestamp("2019-04-28"),
-                distance=42.5,
-                duration=42.195 * speed_min_km * 1.1,
-                major="LONDON 2019",
-            )
+            {
+                "athlete": a,
+                "datetime": pd.Timestamp("2019-04-28"),
+                "distance": 42.5,
+                "duration": 42.195 * speed_min_km * 1.1,
+                "major": "LONDON 2019",
+            }
         )
     return pd.DataFrame(rows)
 
@@ -73,26 +73,26 @@ def test_nested_tuning_runs(frame):
         start = pd.Timestamp("2023-01-01")
         for i in range(30):
             rows.append(
-                dict(
-                    athlete=a,
-                    date=start + pd.Timedelta(days=7 * i),
-                    distance_m=8000.0,
-                    avg_speed_ms=speed,
-                    is_race=False,
-                    is_triathlon=0,
-                )
+                {
+                    "athlete": a,
+                    "date": start + pd.Timedelta(days=7 * i),
+                    "distance_m": 8000.0,
+                    "avg_speed_ms": speed,
+                    "is_race": False,
+                    "is_triathlon": 0,
+                }
             )
         for j in range(4):
             rows.append(
-                dict(
-                    athlete=a,
-                    date=start + pd.Timedelta(days=215 + 28 * j),
-                    distance_m=10000.0,
-                    avg_speed_ms=speed * 1.1,
-                    moving_s=10000 / (speed * 1.1),
-                    is_race=True,
-                    is_triathlon=0,
-                )
+                {
+                    "athlete": a,
+                    "date": start + pd.Timedelta(days=215 + 28 * j),
+                    "distance_m": 10000.0,
+                    "avg_speed_ms": speed * 1.1,
+                    "moving_s": 10000 / (speed * 1.1),
+                    "is_race": True,
+                    "is_triathlon": 0,
+                }
             )
     ds = build_race_dataset(frame(rows))
     study = tune(ds, histgb_space, n_trials=3, n_splits=2)
@@ -113,22 +113,22 @@ def test_pretrain_and_finetune_smoke(frame):
     for a in "ab":
         for i in range(12):
             rows.append(
-                dict(
-                    athlete=a,
-                    date=pd.Timestamp("2023-01-01") + pd.Timedelta(days=7 * i),
-                    is_race=False,
-                    is_triathlon=0,
-                )
+                {
+                    "athlete": a,
+                    "date": pd.Timestamp("2023-01-01") + pd.Timedelta(days=7 * i),
+                    "is_race": False,
+                    "is_triathlon": 0,
+                }
             )
         for j in range(3):
             rows.append(
-                dict(
-                    athlete=a,
-                    date=pd.Timestamp("2023-04-01") + pd.Timedelta(days=14 * j),
-                    moving_s=3000.0,
-                    is_race=True,
-                    is_triathlon=0,
-                )
+                {
+                    "athlete": a,
+                    "date": pd.Timestamp("2023-04-01") + pd.Timedelta(days=14 * j),
+                    "moving_s": 3000.0,
+                    "is_race": True,
+                    "is_triathlon": 0,
+                }
             )
     ds = build_race_dataset(frame(rows))
     model = TransferGRU(pretrained=enc, freeze_epochs=1, epochs=2).fit(ds)

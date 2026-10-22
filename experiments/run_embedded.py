@@ -4,6 +4,7 @@ python experiments/run_embedded.py
 """
 
 import argparse
+from functools import partial
 from pathlib import Path
 
 import pandas as pd
@@ -27,9 +28,9 @@ def main() -> None:
     args = ap.parse_args()
 
     ds = load_dataset(args.data)
-    teacher = lambda: SequenceModel("gru", seed=0)  # noqa: E731
+    teacher = partial(SequenceModel, "gru", seed=0)
     students = [
-        StudentSpec("MLP(16,8) tabular", lambda: TabularMLP(), ("float", "int8")),
+        StudentSpec("MLP(16,8) tabular", TabularMLP, ("float", "int8")),
         # The int8 interpreter aborts on this one (-1e9 masked max) and PAD_VALUE=999 in the input
         # would swamp the int8 range anyway -> float only; CompactSequence fixes both.
         StudentSpec(

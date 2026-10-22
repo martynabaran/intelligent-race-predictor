@@ -9,18 +9,18 @@ from pathlib import Path
 import matplotlib
 
 matplotlib.use("Agg")
-import matplotlib.pyplot as plt  # noqa: E402
+import matplotlib.pyplot as plt
 
-from race_predictor.evaluation.explain import (  # noqa: E402
+from race_predictor.evaluation.explain import (
     attribution_by_channel,
     attribution_by_period,
     integrated_gradients,
     shap_tabular,
     static_feature_names,
 )
-from race_predictor.evaluation.runner import load_dataset  # noqa: E402
-from race_predictor.models import HistGradientBoostingBaseline  # noqa: E402
-from race_predictor.models.sequence import SequenceModel  # noqa: E402
+from race_predictor.evaluation.runner import load_dataset
+from race_predictor.models import HistGradientBoostingBaseline
+from race_predictor.models.sequence import SequenceModel
 
 
 def main() -> None:
@@ -52,7 +52,7 @@ def main() -> None:
     static_imp = dict(zip(static_feature_names(), abs(static_attr).mean(axis=0), strict=True))
     static_imp = dict(sorted(static_imp.items(), key=lambda kv: -kv[1]))
 
-    fig, axes = plt.subplots(1, 2, figsize=(11, 4))
+    _, axes = plt.subplots(1, 2, figsize=(11, 4))
     axes[0].bar(range(len(periods)), periods["mean_abs_net_s_km"], color="#4c78a8")
     axes[0].set_xticks(range(len(periods)), [p.split("-")[0] for p in periods["period"]])
     axes[0].set(

@@ -76,10 +76,10 @@ ignore = [
 convention = "google"
 
 [tool.ruff.lint.per-file-ignores]
-"tests/*" = ["D", "E501", "ARG", "FBT", "PT011", "PT012", "PT018"]
+"tests/*" = ["D", "E501", "ARG", "FBT", "PERF401", "PT011", "PT012", "PT018"]  # builders append in loops for clarity
 "experiments/*" = ["D103", "E501", "T20", "FBT"]  # scripts print their results
 "scripts/*" = ["T20"]
-"src/race_predictor/cli.py" = ["B008"]  # typer idiom: Option()/Argument() as defaults
+"src/race_predictor/cli.py" = ["B008", "FBT"]  # typer idiom: Option()/Argument() as defaults, bool flags
 
 [tool.mypy]
 python_version = "3.11"
