@@ -101,6 +101,19 @@ class RemoveImplausiblyFastRuns(Step):
         return df[~bad].reset_index(drop=True)
 
 
+class DropTriathlonRaces(Step):
+    """Keep the run after a ride as training history, but never as a race to predict.
+
+    The race detector flags runs after a ride at a standard distance; in the thesis data 39 of
+    those 41 "races" were brick training sessions, and only 2 real triathlons remain.
+    """
+
+    def apply(self, df: pd.DataFrame) -> pd.DataFrame:
+        df = df.copy()
+        df["is_race"] = df["is_race"] & (df["is_triathlon"] != 1)
+        return df
+
+
 class DropAthletesWithoutHR(Step):
     def apply(self, df: pd.DataFrame) -> pd.DataFrame:
         has_hr = df.groupby("athlete")[["avg_hr", "max_hr"]].apply(lambda g: g.notna().any().any())

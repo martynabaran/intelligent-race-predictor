@@ -30,9 +30,10 @@ pytest && ruff check .
 
 The app takes a Strava `activities.csv` or Garmin Connect CSV export and shows predicted 5 km / 10 km /
 half / marathon times with an 80 % range, a comparison with the Riegel formula, a form-over-time curve and
-the features driving the prediction. Ranges are empirical errors on athletes the model had not seen
-per race type (road races: about -7 % to +16 %); the models are fitted on only 170 races of 14 athletes, so treat
-predictions as indicative. Choose *road race* or *triathlon (run leg)*: each uses the model that was most accurate for it.
+an explanation of the prediction. It predicts **running races** (no triathlon runs, see below) with the Riegel
+formula times a correction learned from past races, which also knows whether the run Riegel projects from was a
+race or a training run. It was the most accurate model on athletes it had not seen. Ranges are the empirical 10–90 % errors on such athletes
+(about −7 % to +16 %). The models are evaluated on only 129 races of 12 athletes, so treat predictions as indicative.
 
 ### What was built
 
@@ -40,31 +41,36 @@ predictions as indicative. Choose *road race* or *triathlon (run leg)*: each use
 |---|---|---|
 | 1. Package | `sources/`, `processing/`, `domain/` | Strava/Garmin adapters (`@register_source`), cleaning pipeline, race detection, leak-free windows; tests + CI |
 | 2. Baselines | `features/`, `models/`, `evaluation/` | Riegel, Ridge, boosting, thesis GRU; chronological and athlete-grouped evaluation → [results](docs/RESULTS_BASELINES.md) |
-| 3. Transfer + tuning | `sources/kaggle.py`, `models/transfer.py`, `evaluation/tuning.py` | Kaggle pretraining code (**real run pending the data download**), Optuna with nested CV → [tuning](docs/RESULTS_TUNING.md) |
+| 3. Transfer + tuning | `sources/kaggle.py`, `models/transfer.py`, `evaluation/tuning.py` | Kaggle pretraining code (first run: pretraining on 15,971 Kaggle marathons gave no gain; full report in stage 14), Optuna with nested CV → [tuning](docs/RESULTS_TUNING.md) |
 | 4. Architectures + XAI | `models/sequence.py`, `evaluation/explain.py` | GRU vs TCN vs Transformer, SHAP and integrated gradients → [architectures](docs/RESULTS_ARCHITECTURES.md), [explainability](docs/RESULTS_EXPLAINABILITY.md) |
 | 5. Embedded | `models/distill.py`, `models/tflite.py` | Distilled 4 KB int8 TFLite model, ~130× smaller than the GRU at equal accuracy → [results](docs/RESULTS_EMBEDDED.md) |
 | 6. App | `services/`, `cli.py`, `app/` | CLI + Streamlit app |
-| Error analysis | `evaluation/breakdown.py`, `processing/pipeline.py` | Errors split into stand-alone races, triathlon runs and distances; median APE; filters for a ride logged as a run and HR-sensor spikes → [breakdown](docs/RESULTS_BREAKDOWN.md) |
+| Error analysis | `evaluation/breakdown.py`, `processing/pipeline.py` | Errors split into stand-alone races, triathlon runs and distances; median APE; filters for a ride logged as a run and HR-sensor spikes → [breakdown](docs/RESULTS_BREAKDOWN.md), [race review](docs/REVIEW_RACES.md) |
 | 8. Clean-up | `processing/cleaning.py`, `services/`, `tests/test_architecture.py` | One cleaning pipeline for training and prediction; UIs use only `services/` (`Prediction` contract); import layering checked by a test |
-| 10. Race modes | `models/router.py`, `models/hybrid.py`, `evaluation/modes.py` | Model per race mode: Riegel for road races, ridge for triathlon runs (the app's model now); nested selection confirms it → [modes](docs/RESULTS_MODES.md) |
 | 9. Training load | `training_load/`, `services/load.py`, `app/pages/` | TRIMP per activity (fallback for missing heart rate, flagged); daily fitness / fatigue / form state (CTL, ATL, TSB) with leak-free `state_at`; Banister fit per athlete; load features for race datasets (off by default); *Training load* page in the app. **Negative result:** the features do not improve prediction and the Banister model loses to a running mean → [results](docs/RESULTS_TRAINING_LOAD.md) |
+| 10. Race modes | `models/router.py`, `models/hybrid.py`, `evaluation/modes.py` | Model per race mode (running races only for now; triathlon runs dropped, 39/41 were brick sessions), Riegel+correction hybrid, nested model selection → [modes](docs/RESULTS_MODES.md) |
 | 12a. Planner: zones and feasibility | `planning/`, `domain/goal.py` | Pace zones from a race result (Daniels VDOT: easy, marathon, threshold, interval, repetition) and a goal verdict (realistic / ambitious / unlikely) against a predicted time and its range. Pure functions, no models. Plan builder, pacing and calendar export follow in 12b-12d |
 
-### Headline findings (MAPE of race time on **unseen athletes**, 170 races)
+### Headline findings (MAPE of race time on **unseen athletes**, 129 running races)
 
-| Model | MAPE |
-|---|---|
-| **Router: Riegel for road races, ridge for triathlon runs (used by the app)** | **7.9 %** (nested: 8.2 %) |
-| Ridge regression (previous app model) | 9.7 % |
-| Riegel formula | 11.0 % |
-| GRU / TCN / Transformer (3 seeds) | 15.0 % / 17.0 % / 17.7 % |
-| Distilled MLP, int8 TFLite (3.7 KB) | 12.9 % |
+| Model | MAPE | median |
+|---|---|---|
+| **Riegel × learned correction, aware of the reference type (used by the app)** | **6.1 %** (nested selection: 6.1 %) | 4.9 % |
+| Riegel × learned correction | 6.5 % | 5.0 % |
+| Riegel formula | 6.6 % | 4.6 % |
+| Ridge regression (previous app model) | 10.7 % | 8.5 % |
+| Gradient boosting | 14.8 % | 14.4 % |
 
-With this little data the simple models win; the sequence models need the pretraining of stage 3 to pay off.
-Most of the remaining error comes from triathlon runs (a quarter of the races). On **stand-alone races**, which are the
-ones the app predicts, the Riegel formula is the most accurate on unseen athletes: 6.6 % MAPE (median 4.6 %) vs 9.0 %
-for Ridge ([breakdown](docs/RESULTS_BREAKDOWN.md)). Routing each race mode to the model that handles it best is what
-the app now does ([modes](docs/RESULTS_MODES.md)).
+The race labels mattered more than the model. A quarter of the detected "races" were runs after a ride. 39 of those 41
+were brick training sessions, not races ([review](docs/REVIEW_RACES.md)), so the app now predicts running races only
+([breakdown](docs/RESULTS_BREAKDOWN.md), [modes](docs/RESULTS_MODES.md)). On unseen athletes the Riegel formula is as
+good as anything learned. The learned correction helps on long races (marathon 13.2 → 10.1 %, 8 races). Riegel itself
+is only as good as its reference run: 5.7 % when it projects from a previous race, 8.4 % from a training run. For athletes already in the
+training data, learned models win (Ridge 7.8 % vs Riegel 9.5 %, chronological protocol).
+
+> Results of stages 3–5 (sequence models, distillation, transfer) were computed on the earlier 170-race set that still
+> contained the brick sessions; they will be recomputed in stage 15.
+
 Methodological notes (grouped CV by athlete, nested tuning, seed variance) are in the results files.
 
 ---

@@ -126,21 +126,48 @@ def test_contributions_sum_to_prediction(races):
         assert model.contributions(ds).sum(axis=1).to_numpy() == pytest.approx(model.predict(ds))
 
 
-def test_mode_router_uses_model_per_mode(races):
+def test_mode_router_uses_the_model_for_the_mode(races):
     ds = build_race_dataset(races)
-    ds.static.loc[[0, 1], "is_triathlon"] = 1
     router = ModeRouter().fit(ds)
     pred = router.predict(ds)
-    riegel, ridge = RiegelBaseline().fit(ds).predict(ds), RidgeBaseline().fit(ds).predict(ds)
-    assert pred[:2] == pytest.approx(ridge[:2]) and pred[2:] == pytest.approx(riegel[2:])
-    assert router.name == "Router(road=Riegel, triathlon=Ridge)"
+    assert pred == pytest.approx(RiegelCorrected(use_reference_type=True).fit(ds).predict(ds))
+    assert router.name == "Router(road=Riegel+correction+ref)"
+    assert router.model_for(RaceMode.ROAD).name == "Riegel+correction+ref"
     assert router.contributions(ds).sum(axis=1).to_numpy() == pytest.approx(pred)
-    assert list(race_modes(ds)[:3]) == [RaceMode.TRIATHLON, RaceMode.TRIATHLON, RaceMode.ROAD]
+    assert set(race_modes(ds)) == {RaceMode.ROAD}
+    ridge = ModeRouter({RaceMode.ROAD: RidgeBaseline}).fit(ds).predict(ds)
+    assert ridge == pytest.approx(RidgeBaseline().fit(ds).predict(ds))
 
 
 def test_mode_router_needs_every_mode():
     with pytest.raises(ValueError):
-        ModeRouter({RaceMode.ROAD: RiegelBaseline})
+        ModeRouter({})
+
+
+def test_riegel_corrected_contributions(races):
+    ds = build_race_dataset(races)
+    ds.y = RiegelBaseline().fit(ds).predict(ds) * 1.08
+    model = RiegelCorrected(alpha=1e-3).fit(ds)
+    c = model.contributions(ds)
+    assert c.sum(axis=1).to_numpy() == pytest.approx(model.predict(ds))
+    riegel = RiegelBaseline().fit(ds).contributions(ds)
+    assert c["best_run_pace"].to_numpy() == pytest.approx(riegel["best_run_pace"].to_numpy())
+    assert (c["model_correction"] > 0).all()  # races are slower than Riegel says
+    no_ref = ds.subset([0])
+    no_ref.static.loc[:, ["riegel_ref_time_s", "riegel_ref_distance_m"]] = np.nan
+    fallback = model.contributions(no_ref)  # no reference run -> ridge contributions
+    assert "(baseline)" in fallback and fallback.sum(axis=1).to_numpy() == pytest.approx(
+        model.predict(no_ref)
+    )
+
+
+def test_riegel_corrected_can_use_reference_type(races):
+    ds = build_race_dataset(races)
+    assert set(ds.static["riegel_ref_is_race"].dropna()) <= {0.0, 1.0}
+    plain, aware = RiegelCorrected(), RiegelCorrected(use_reference_type=True)
+    assert aware._x(ds).shape[1] == plain._x(ds).shape[1] + 1
+    assert (plain.name, aware.name) == ("Riegel+correction", "Riegel+correction+ref")
+    assert np.isfinite(aware.fit(ds).predict(ds)).all()
 
 
 def test_riegel_corrected_learns_systematic_slowdown(races):
@@ -157,5 +184,4 @@ def test_auto_router_picks_from_inner_cv(races):
     assert auto.chosen_[RaceMode.ROAD] == min(
         auto.scores_[RaceMode.ROAD], key=auto.scores_[RaceMode.ROAD].get
     )
-    assert auto.chosen_[RaceMode.TRIATHLON] == auto.chosen_[RaceMode.ROAD]  # no triathlons
     assert np.isfinite(auto.predict(ds)).all()

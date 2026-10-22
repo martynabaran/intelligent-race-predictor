@@ -166,7 +166,12 @@ class RacePredictor:
         """The fastest >=5 km run of the last year that the Riegel formula projects from."""
         s = self._query(activities, [10000.0], race_date, 0.0).static.iloc[0]
         d, t = float(s["riegel_ref_distance_m"]), float(s["riegel_ref_time_s"])
-        return {"distance_m": d, "time_s": t, "pace_s_km": t / (d / 1000) if d else np.nan}
+        return {
+            "distance_m": d,
+            "time_s": t,
+            "pace_s_km": t / (d / 1000) if d else np.nan,
+            "is_race": bool(s["riegel_ref_is_race"] == 1),
+        }
 
     def form_curve(
         self,
