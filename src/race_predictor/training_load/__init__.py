@@ -1,5 +1,12 @@
 """Training load: TRIMP per activity and the daily fitness / fatigue / form state."""
 
+from race_predictor.training_load.banister import (
+    BanisterFit,
+    BanisterParams,
+    fit_banister,
+    rolling_forecast,
+)
+from race_predictor.training_load.performance import equivalent_speed
 from race_predictor.training_load.state import (
     ATL_DAYS,
     CTL_DAYS,
@@ -19,13 +26,18 @@ from race_predictor.training_load.trimp import (
 __all__ = [
     "ATL_DAYS",
     "BANISTER_B",
+    "BanisterFit",
+    "BanisterParams",
     "CTL_DAYS",
     "DEFAULT_HR_REST",
     "TYPICAL_HRR",
     "WARMUP_DAYS",
     "activity_trimp",
+    "equivalent_speed",
+    "fit_banister",
     "load_state",
     "load_states",
+    "rolling_forecast",
     "state_at",
     "trimp_per_minute",
 ]
