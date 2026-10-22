@@ -12,8 +12,9 @@ from pathlib import Path
 import pandas as pd
 
 from race_predictor.evaluation.breakdown import breakdown
+from race_predictor.evaluation.report import write_report
 from race_predictor.evaluation.runner import default_factories, load_dataset, protocol_predictions
-from race_predictor.processing import default_pipeline
+from race_predictor.processing import default_pipeline, load_race_labels
 
 # This analysis is what led to dropping triathlon runs, so it keeps them.
 TRI = {"include_triathlon_races": True}
@@ -37,10 +38,15 @@ def main() -> None:
 
     # "fast-run filter" keeps the thesis race set (the removed run was not a race), so it is the
     # like-for-like comparison; the HR-spike filter lowers HRmax and so changes which races exist.
+    labels_path = args.data / "race_labels.csv"
+    labels = load_race_labels(labels_path) if labels_path.exists() else None
     datasets = {
-        "thesis": load_dataset(args.data, default_pipeline(fast_run_filter=False, **TRI)),
-        "fast-run filter": load_dataset(args.data, default_pipeline(**TRI)),
-        "+ HR-spike filter": load_dataset(args.data, default_pipeline(hr_spike_filter=True, **TRI)),
+        "thesis": load_dataset(
+            args.data, default_pipeline(fast_run_filter=False, hr_spike_filter=False, **TRI)
+        ),
+        "fast-run filter": load_dataset(args.data, default_pipeline(hr_spike_filter=False, **TRI)),
+        "+ HR-spike filter": load_dataset(args.data, default_pipeline(**TRI)),
+        "+ reviewed labels": load_dataset(args.data, default_pipeline(race_labels=labels, **TRI)),
     }
     sizes = pd.DataFrame({k: describe(v) for k, v in datasets.items()}).T
 
@@ -75,19 +81,22 @@ def main() -> None:
     per_distance.insert(0, "n", cleaned.groupby("segment")["n"].first().reindex(per_distance.index))
 
     print(sizes.to_string(), summary.to_string(index=False), per_distance.to_string(), sep="\n\n")
-    args.out.write_text(
+    write_report(
+        args.out,
         "# Error breakdown and data cleaning\n\n"
         "`thesis` = the thesis cleaning chain; `fast-run filter` = plus `RemoveImplausiblyFastRuns` "
-        "(the new default; same races as `thesis`, so directly comparable); `+ HR-spike filter` = "
-        "plus `ValidateMaxHeartRate` (opt-in), which lowers inflated HRmax and therefore detects "
-        "more races - its metrics are on a different race set. Metrics on total race time; "
+        "(same races as `thesis`, so directly comparable); `+ HR-spike filter` = plus "
+        "`ValidateMaxHeartRate` (now default), which lowers inflated HRmax and therefore detects "
+        "more races; `+ reviewed labels` = plus the hand-labelled races of `race_labels.csv` "
+        "(the current default of the app's training data). The last two are on different race "
+        "sets than the first two. Metrics on total race time; "
         "`MedAPE` = median absolute percentage error. `stand-alone` excludes triathlon runs - the "
         "app only predicts stand-alone races.\n\n"
         "## Datasets\n\n" + sizes.to_markdown() + "\n\n"
         "## MAPE / median APE by segment\n\n" + summary.to_markdown(index=False) + "\n\n"
         "## MAPE per distance (stand-alone races, fast-run filter = default pipeline, grouped-CV)\n\n"
         + per_distance.reset_index().to_markdown(index=False)
-        + "\n"
+        + "\n",
     )
 
 

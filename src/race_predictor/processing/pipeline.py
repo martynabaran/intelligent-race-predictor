@@ -102,10 +102,13 @@ class RemoveImplausiblyFastRuns(Step):
 
 
 class DropTriathlonRaces(Step):
-    """Keep the run after a ride as training history, but never as a race to predict.
+    """Keep the run after a ride as training history, but never as a road race to predict.
 
-    The race detector flags runs after a ride at a standard distance; in the thesis data 39 of
-    those 41 "races" were brick training sessions, and only 2 real triathlons remain.
+    The detector flags runs after a ride at a standard distance as races but cannot tell brick
+    training from triathlon run legs: of the 39 weakest cases the manual review found 27 training
+    sessions and 12 races (``docs/REVIEW_RACES.md``). Run legs are slower than road races of the
+    same distance and there are too few for a model of their own, so they are left out of the
+    races to predict.
     """
 
     def apply(self, df: pd.DataFrame) -> pd.DataFrame:

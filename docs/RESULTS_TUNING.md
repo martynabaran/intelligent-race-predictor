@@ -1,5 +1,7 @@
 # Hyper-parameter tuning (Optuna)
 
+> **Note:** computed on the earlier 170-race set, before the manual race review (`REVIEW_RACES.md`); to be recomputed on the reviewed labels in stage 15.
+
 170 races, 14 athletes.
 
 Grouped (by athlete) CV. 'nested' re-tunes inside every outer training fold, so it is an unbiased estimate; the single study below is tuned on all folds and therefore optimistic.
