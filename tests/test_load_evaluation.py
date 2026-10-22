@@ -1,8 +1,8 @@
 import numpy as np
 import pandas as pd
 import pytest
-from tests.test_load_features import activities, training_frame
 
+from load_helpers import activities, training_frame
 from race_predictor.evaluation.breakdown import segment_masks
 from race_predictor.evaluation.training_load import (
     banister_report,
