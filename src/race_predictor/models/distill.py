@@ -11,10 +11,12 @@ from __future__ import annotations
 import keras
 import numpy as np
 import pandas as pd
-from keras import layers
+from keras import layers, ops
+from sklearn.preprocessing import StandardScaler
 
-from race_predictor.features import RaceDataset
+from race_predictor.features import SEQ_FEATURES, STATIC_NUMERIC, RaceDataset
 from race_predictor.models.base import RaceModel
+from race_predictor.models.sequence import MAX_LEN, PAD_VALUE, SequenceModel
 
 
 class Distilled(RaceModel):
@@ -120,3 +122,92 @@ class TabularMLP(RaceModel):
 
     def predict(self, ds: RaceDataset) -> np.ndarray:
         return self.to_pace(self.model_.predict(self.inputs(ds)[0], verbose=0))
+
+
+class NonNegativeMaskedPool(layers.Layer):
+    """Masked mean- and max-pooling over time for non-negative (post-ReLU) features.
+
+    ``MaskedPool`` pushes padded steps to -1e9 before the max, which is fine in float but makes the
+    int8 interpreter abort. For ``h >= 0``, ``max(h * mask)`` is the same maximum.
+    """
+
+    def call(self, inputs):
+        h, mask = inputs
+        m = ops.expand_dims(mask, -1)
+        hm = h * m
+        mean = ops.sum(hm, axis=1) / ops.maximum(ops.sum(m, axis=1), 1.0)
+        return ops.concatenate([mean, ops.max(hm, axis=1)], axis=-1)
+
+
+class CompactSequence(SequenceModel):
+    """Tiny int8-ready sequence student (~1.2 k parameters).
+
+    Same preprocessing as :class:`SequenceModel`, but the padding mask is a separate input and
+    padded steps are zeros. With ``PAD_VALUE`` (999) inside ``seq_input``, one int8 range would
+    have to cover both 999 and the standardised values (~[-3, 3]), collapsing the real data.
+    """
+
+    def __init__(
+        self,
+        width=8,
+        dense_units=16,
+        learning_rate=2e-3,
+        epochs=300,
+        patience=30,
+        batch_size=16,
+        seed=0,
+    ):
+        super().__init__(
+            "tcn",
+            width=width,
+            dense_units=dense_units,
+            dropout=0.0,
+            learning_rate=learning_rate,
+            epochs=epochs,
+            patience=patience,
+            batch_size=batch_size,
+            seed=seed,
+        )
+        self.name = "CompactSequence"
+
+    def inputs(self, ds: RaceDataset) -> list[np.ndarray]:
+        seq, static = super().inputs(ds)
+        mask = (seq[:, :, 0] != PAD_VALUE).astype("float32")
+        return [np.where(mask[:, :, None] > 0, seq, 0.0).astype("float32"), mask, static]
+
+    def _build(self, seq_shape, static_shape):
+        seq_in = layers.Input(shape=seq_shape, name="seq_input")
+        mask_in = layers.Input(shape=seq_shape[:1], name="mask_input")
+        h = layers.Dense(self.width, activation="relu")(seq_in)
+        h = layers.Conv1D(self.width, 5, padding="causal", dilation_rate=4, activation="relu")(h)
+        h = NonNegativeMaskedPool()([h, mask_in])
+        static_in = layers.Input(shape=static_shape, name="static_input")
+        s = layers.Dense(self.dense_units, activation="relu")(static_in)
+        m = layers.Dense(self.dense_units, activation="relu")(layers.concatenate([h, s]))
+        model = keras.Model([seq_in, mask_in, static_in], layers.Dense(1)(m))
+        model.compile(optimizer=keras.optimizers.Adam(self.learning_rate), loss="mae")
+        return model
+
+    def fit(self, ds: RaceDataset) -> CompactSequence:
+        keras.utils.set_random_seed(self.seed)
+        self.seq_scaler_ = StandardScaler().fit(np.nan_to_num(np.vstack(ds.seqs)))
+        self.static_scaler_ = StandardScaler().fit(
+            np.nan_to_num(ds.static[STATIC_NUMERIC].to_numpy(float))
+        )
+        self.y_scaler_ = StandardScaler().fit(ds.y.reshape(-1, 1))
+        self.max_len_ = min(max(len(s) for s in ds.seqs), MAX_LEN)
+        x = self.inputs(ds)
+        self.model_ = self._build((self.max_len_, len(SEQ_FEATURES)), (x[2].shape[1],))
+        self.model_.fit(
+            x,
+            self.y_scaler_.transform(ds.y.reshape(-1, 1)).ravel(),
+            validation_split=0.2,
+            epochs=self.epochs,
+            batch_size=self.batch_size,
+            shuffle=True,
+            verbose=0,
+            callbacks=[
+                keras.callbacks.EarlyStopping(patience=self.patience, restore_best_weights=True)
+            ],
+        )
+        return self
